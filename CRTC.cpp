@@ -15,7 +15,8 @@
 CRTC::CRTC():
 m_pSyncProvider(0),
 syncInterval(86400),
-nextSyncTime(0)
+nextSyncTime(0),
+Rtc(Wire)
 {
   
 }
@@ -51,65 +52,79 @@ bool CRTC::setup()
 
 time_t CRTC::now()
 {
-  Serial.println("CRTC::now() - called");
-  if (!Rtc.IsDateTimeValid()) 
-  {
-    // Common Cuases:
-    //    1) the battery on the device is low or even missing and the power line was disconnected
+	Serial.println("CRTC::now() - called");
+
+	if (!Rtc.IsDateTimeValid()) 
+	{
+		// Common Cases:
+		//    1) the battery on the device is low or even missing and the power line was disconnected
     Serial.println("CRTC::now() - RTC lost confidence in the DateTime! Trying to resync with SyncProvider");
+		sync(0, true);
+	}
 
-    sync(0, true);
-  }
+	RtcDateTime now = Rtc.GetDateTime();
+	time_t t((time_t)now.Epoch32Time());
+	t = sync(t);
 
-  RtcDateTime now = Rtc.GetDateTime();
-  time_t t((time_t)now.Epoch32Time());
-
-  t = sync(t);
-
-  return(t);
+	return(t);
 }
 
 time_t CRTC::sync(time_t t, bool force)
 {
-  if(nextSyncTime <= (uint32_t)t || force == true)
-  {
-    if(0 != m_pSyncProvider)
-    {
-      Serial.println("CRTC::sync() resyncing");
-      time_t tsync(m_pSyncProvider->now());
-      if(0 != tsync)
-      {
-        setTime(tsync);
-        t = tsync;
-      }
-      else
-      {
-        nextSyncTime = (uint32_t)t + syncInterval;
-      }
-    }
-  }
-  return t;
+	if(nextSyncTime <= (uint32_t)t || force == true)
+	{
+		if(0 != m_pSyncProvider)
+		{
+			Serial.println("CRTC::sync - resyncing");
+
+			time_t tsync(m_pSyncProvider->now());
+			if(0 != tsync)
+			{
+				setTime(tsync);
+				t = tsync;
+			}
+			else
+			{
+				delay(1000);
+				time_t tsync(m_pSyncProvider->now());
+				if (0 != tsync)
+				{
+					setTime(tsync);
+					t = tsync;
+				}
+				else
+				{
+					nextSyncTime = (uint32_t)t + syncInterval;
+				}
+			}
+		}
+	}
+
+	return t;
 }
 
 void CRTC::setTime(time_t t)
 {
-  RtcDateTime now;
-  now.InitWithEpoch32Time((uint32_t)t);
-  Rtc.SetDateTime(now);
-  nextSyncTime = (uint32_t)t + syncInterval;
+	RtcDateTime now;
+	now.InitWithEpoch32Time((uint32_t)t);
+	Rtc.SetDateTime(now);
+	nextSyncTime = (uint32_t)t + syncInterval;
 }
 
-void CRTC::setSyncProvider(ISyncProvider* pSyncProvider){
-  m_pSyncProvider = pSyncProvider;  
-  nextSyncTime = 0;
-  now(); // this will sync the clock
+void CRTC::setSyncProvider(ISyncProvider* pSyncProvider)
+{
+	m_pSyncProvider = pSyncProvider;  
+	nextSyncTime = 0;
+	now(); // this will sync the clock
 }
 
-void CRTC::setSyncInterval(time_t interval){ // set the number of seconds between re-sync
-  syncInterval = (uint32_t)interval;
-  RtcDateTime now = Rtc.GetDateTime();
+// set the number of seconds between re-sync
+void CRTC::setSyncInterval(time_t interval)
+{
   
-  nextSyncTime = now.Epoch32Time() + syncInterval;
+	syncInterval = (uint32_t)interval;
+	RtcDateTime now = Rtc.GetDateTime();
+	nextSyncTime = now.Epoch32Time() + syncInterval;
 }
 
 

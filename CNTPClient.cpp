@@ -17,8 +17,11 @@ CNTPClient::~CNTPClient()
 bool CNTPClient::setup(IPAddress timeServer)
 {
   setTimeServer(timeServer);
+  
   Serial.println("CNTPClient::Setup() - Starting UDP");
+  
   Udp.begin(localPort);
+  
   Serial.print("CNTPClient::Setup() - Local port: ");
   Serial.println(Udp.localPort());
 }
@@ -28,28 +31,40 @@ void CNTPClient::setTimeServer(IPAddress timeServer)
   m_timeServer = timeServer;
 }
 
+time_t CNTPClient::getLastSync()
+{
+	return m_lastSync;
+}
+
 time_t CNTPClient::now()
 {
-  while (Udp.parsePacket() > 0) ; // discard any previously received packets
-  Serial.println("CNTPClient::now() - Transmit NTP Request");
-  sendNTPpacket(m_timeServer);
-  uint32_t beginWait = millis();
-  while (millis() - beginWait < 1500) {
-    int size = Udp.parsePacket();
-    if (size >= NTP_PACKET_SIZE) {
-      Serial.println("CNTPClient::now() - Receive NTP Response");
-      Udp.read(packetBuffer, NTP_PACKET_SIZE);  // read packet into the buffer
-      unsigned long secsSince1900;
-      // convert four bytes starting at location 40 to a long integer
-      secsSince1900 =  (unsigned long)packetBuffer[40] << 24;
-      secsSince1900 |= (unsigned long)packetBuffer[41] << 16;
-      secsSince1900 |= (unsigned long)packetBuffer[42] << 8;
-      secsSince1900 |= (unsigned long)packetBuffer[43];
-      return secsSince1900 - 2208988800UL;
-    }
-  }
-  Serial.println("CNTPClient::now() - No NTP Response :-(");
-  return 0; // return 0 if unable to get the time
+	while (Udp.parsePacket() > 0) ; // discard any previously received packets
+	
+	Serial.println("CNTPClient::now() - Transmit NTP Request");
+
+	sendNTPpacket(m_timeServer);
+	
+	uint32_t beginWait = millis();
+	while (millis() - beginWait < 1500) 
+	{
+		int size = Udp.parsePacket();
+		if (size >= NTP_PACKET_SIZE) 
+		{
+			Serial.println("CNTPClient::now() - Receive NTP Response");
+			Udp.read(packetBuffer, NTP_PACKET_SIZE);  // read packet into the buffer
+			unsigned long secsSince1900;
+			// convert four bytes starting at location 40 to a long integer
+			secsSince1900 =  (unsigned long)packetBuffer[40] << 24;
+			secsSince1900 |= (unsigned long)packetBuffer[41] << 16;
+			secsSince1900 |= (unsigned long)packetBuffer[42] << 8;
+			secsSince1900 |= (unsigned long)packetBuffer[43];
+			m_lastSync = secsSince1900 - 2208988800UL;
+			return m_lastSync;
+		}
+	}
+
+	Serial.println("CNTPClient::now() - No NTP Response :-(");
+	return 0; // return 0 if unable to get the time
 }
 
 // send an NTP request to the time server at the given address

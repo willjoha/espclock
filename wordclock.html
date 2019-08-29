@@ -1,0 +1,84 @@
+<html>
+<head>
+<title>Konfiguration WordClock</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+</head>
+<style>
+	body { font-family:verdana; background:#FBFBEF }
+</style>
+<body >
+<h1>Word Clock</h1>
+<h3>Helligkeit</h3>
+<table>
+	<tr>
+		<td width='100'>Tageszeit</td>
+		<td>
+			<input onchange="window.location.href='?DAYSHIFT='+this.value;" value='07:00' type ='time' />&nbsp; -&nbsp; <input onchange="window.location.href='?NIGHTSHIFT='+this.value;" value='21:00' type ='time'/>
+		</td>
+	</tr>
+	<tr>
+		<td width='100'>bei Tag</td>
+		<td><button type='button' onclick="window.location.href='?DAY=MINUS'"><</button>
+		<input onchange="window.location.href='?DAY='+this.value;" value='182' min='0' max='255' type='range'><button type='button' onclick="window.location.href='?DAY=PLUS'">></button>&nbsp;&nbsp;182</td>
+	</tr>
+	<tr>
+		<td width='100'>bei Nacht</td>
+		<td><button type='button' onclick="window.location.href='?NIGHT=MINUS'"><</button>
+		<input onchange="window.location.href='?NIGHT='+this.value;" value='54' min='0' max='255' type='range'><button type='button' onclick="window.location.href='?NIGHT=PLUS'">></button>&nbsp;&nbsp;54</td>
+	</tr>
+</table>
+<h3>Farbe</h3>
+<table>
+	<tr>
+		<td width='100'>Rot</td>
+		<td><button type='button' onclick="window.location.href='?RED=MINUS'"><</button>
+		<input onchange="window.location.href='?RED='+this.value;" value='255' min='0' max='255' type='range'><button type='button' onclick="window.location.href='?RED=PLUS'">></button>&nbsp;&nbsp;255</td>
+	</tr>
+	<tr>
+		<td width='100'>Gr&uuml;n</td>
+		<td><button type='button' onclick="window.location.href='?GREEN=MINUS'"><</button>
+		<input onchange="window.location.href='?GREEN='+this.value;" value='34' min='0' max='255' type='range'><button type='button' onclick="window.location.href='?GREEN=PLUS'">></button>&nbsp;&nbsp;34</td>
+	</tr>
+	<tr>
+		<td width='100'>Blau</td>
+		<td><button type='button' onclick="window.location.href='?BLUE=MINUS'"><</button>
+		<input onchange="window.location.href='?BLUE='+this.value;" value='139' min='0' max='255' type='range'><button type='button' onclick="window.location.href='?BLUE=PLUS'">></button>&nbsp;&nbsp;139</td>
+	</tr>
+	<tr>
+		<td width='100'>Modus</td>
+		<td>
+		<select name="ColorMode" onChange="window.location.href='?COLORMODE=' + this.options[this.selectedIndex].value">
+		<option value="SOLID" >Solid</option>
+		<option value="GRADIENT" >Gradient</option>
+		<option value="GLITTER" >Glitter</option>
+		<option value="RAINBOW1" >Rainbow_1</option>
+		<option value="RAINBOW2" >Rainbow_2</option>
+		<option value="RAINBOW3" selected >Rainbow_3</option>
+		</select>
+	</td>
+	</tr>
+</table>
+<br/>
+<button type='button' onclick="window.location.href='?SAVE=true'">Speichern</button>
+<br/><br/>
+<h3>Info</h3>
+<table>
+	<tr>
+		<td width='100'>Zeitserver</td>
+		<td>&nbsp;
+			<input id='ntpserver' onchange="window.location.href='?NTP='+this.value;" value='0.de.pool.ntp.org' type ='text' />&nbsp;
+			<button type='button' onclick="window.location.href='?SYNC=true'">Sync</button>
+		</td>
+	</tr>
+	<tr>
+		<td width='100'>Sync</td>
+		<td>18:26.32</td>
+	</tr>
+	<tr>
+		<td width='100'>Software</td>
+		<td>Feb 24 2018</td>
+	</tr>
+</table>
+<button type = "button" onclick="window.location.href = '?DEMO=true'">LED Demo</button>
+</body>
+</html>

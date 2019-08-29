@@ -25,86 +25,45 @@ const uint8_t mylog[68] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16,
 233, 240, 248, 255};
 
 
-//inline uint8_t logdif8(uint8_t dif)
-//{
-//  if(dif < 215) return 1;
-//  if(dif < 246) return 2;
-//  if(dif < 251) return 3;
-//  if(dif = 251) return 4;
-//  if(dif = 252) return 5;
-//  if(dif = 253) return 8;
-//  if(dif = 254) return 16;
-//  if(dif = 255) return 32;
-//  return 0;
-//}
-
-
 bool CFadeAnimation::transform(CRGB* current, CRGB* target, int num_leds, bool changed)
 {
-  bool bchanged(false);
+	bool bchanged(false);
 
-  static uint8_t n = 0;
+	static uint8_t n = 0;
 
-  if(changed) n = 0;
+	if(changed) 
+		n = 0;
 
-  unsigned long currentMillis = millis();
-  if(currentMillis - previousMillis >= interval)
-  {
-    previousMillis = currentMillis;
-    for(int i = 0; i < num_leds; i++)
-    {
-      if(current[i] != target[i])
-      {
-        //nblend(current[i], target[i], mylog[n]);
+	unsigned long currentMillis = millis();
+	if(currentMillis - previousMillis >= interval)
+	{
+		previousMillis = currentMillis;
+		for(int i = 0; i < num_leds; i++)
+		{
+			if(current[i] != target[i])
+			{
+				current[i].r = sqrt16(scale16by8( current[i].r * current[i].r, (255-mylog[n]) ) + scale16by8( target[i].r * target[i].r, mylog[n] ));
+				current[i].g = sqrt16(scale16by8( current[i].g * current[i].g, (255-mylog[n]) ) + scale16by8( target[i].g * target[i].g, mylog[n] ));
+				current[i].b = sqrt16(scale16by8( current[i].b * current[i].b, (255-mylog[n]) ) + scale16by8( target[i].b * target[i].b, mylog[n] ));
+				bchanged = true;
+			}
+		}
+		if(!bchanged) 
+			n = 0;
+		else if(n < 63) 
+			n++;
+	}
 
+	return(bchanged);
+}
 
-        current[i].r = sqrt16(scale16by8( current[i].r * current[i].r, (255-mylog[n]) ) + scale16by8( target[i].r * target[i].r, mylog[n] ));
-        current[i].g = sqrt16(scale16by8( current[i].g * current[i].g, (255-mylog[n]) ) + scale16by8( target[i].g * target[i].g, mylog[n] ));
-        current[i].b = sqrt16(scale16by8( current[i].b * current[i].b, (255-mylog[n]) ) + scale16by8( target[i].b * target[i].b, mylog[n] ));
-        //current[i].r = qadd8(target[i].r*(mylog[n]/255.0), current[i].r*(mylog[63-n]/255.0));
-        //current[i].g = qadd8(target[i].g*(mylog[n]/255.0), current[i].g*(mylog[63-n]/255.0));
-        //current[i].b = qadd8(target[i].b*(mylog[n]/255.0), current[i].b*(mylog[63-n]/255.0));
+bool CFadeAnimation::transform2(CRGB* current, CRGB* target, int num_leds)
+{
+	for (int i = 0; i < num_leds; i++)
+	{
+		current[i] = target[i];
+	}
 
-
-        //current[i].g += (target[i].g-current[i].g)*mylog[n]/255;
-        //current[i].b += (target[i].b-current[i].b)*mylog[n]/255;
-    
-        
-//        if(0 == i)
-//        {
-//          Serial.print(n);
-//          Serial.print(": ");
-//          Serial.print(current[i].r);
-//          Serial.print(".");
-//          Serial.print(current[i].g);
-//          Serial.print(".");
-//          Serial.print(current[i].b);
-//          Serial.print(" - ");
-//          Serial.print(target[i].r);
-//          Serial.print(".");
-//          Serial.print(target[i].g);
-//          Serial.print(".");
-//          Serial.print(target[i].b);
-//          Serial.println();
-//        }
-
-        
-//        int dif = (target[i].r - current[i].r);
-//        current[i].r += dif / abs(dif);
-//        
-//        dif = (target[i].g - current[i].g);
-//        current[i].g += dif / abs(dif);
-//  
-//        dif = (target[i].b - current[i].b);
-//        current[i].b += dif / abs(dif);
-//  
-        bchanged = true;
-      }
-    }
-    if(!bchanged) n = 0;
-    else if(n < 63) n++;
-  }
-
-  return(bchanged);
+	return true;
 }
 

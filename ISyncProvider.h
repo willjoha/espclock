@@ -1,7 +1,8 @@
 #ifndef _ISYNCPROVIDER_H
 #define _ISYNCPROVIDER_H
 
-#include <TimeLib.h>
+#include <TimeLib.h>              // http://www.arduino.cc/playground/Code/Time Time, by Michael Margolis includes
+                                  // https://github.com/PaulStoffregen/Time V1.5 
 
 class ISyncProvider
 {

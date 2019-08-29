@@ -8,8 +8,8 @@
 #else
 #include <avr/pgmspace.h>
 #endif
-#include <Wire.h>  // must be incuded here so that Arduino library object file references work
-#include <RtcDS3231.h>
+#include <Wire.h>          // must be incuded here so that Arduino library object file references work
+#include <RtcDS3231.h>     // https://github.com/Makuna/Rtc v2.3.3
 
 
 class CRTC : public ISyncProvider
@@ -37,8 +37,8 @@ private:
 
   time_t sync(time_t t, bool force=false);
   
-
-  RtcDS3231 Rtc;
+  
+  RtcDS3231<TwoWire> Rtc;
   
 };
 
