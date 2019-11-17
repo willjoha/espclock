@@ -20,3 +20,5 @@ Please check the code for the exact version and source url of each library. Runn
 
 Each letter is enlighted from a single LED. It's recommended to use a light gate for each single LED.
 
+#### update 2019-11-17
+added dialekt selection: dropdown box with "fränkisch", "baierisch" and "hochdeutsch".
