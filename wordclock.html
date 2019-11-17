@@ -8,6 +8,24 @@
 </style>
 <body >
 <h1>Word Clock</h1>
+<h3>Wort-Schema</h3>
+<!--
+	fränkisch:   4:15 viertel 5,      4:30 halb 5, 4:45 dreiviertel 5
+	bayerisch:   4:15 viertel nach 4, 4:30 halb 5, 4:45 dreiviertel 5
+	hochdeutsch: 4:15 viertel nach 4, 4:30 halb 5, 4:45 viertel vor 5
+-->
+<table>
+	<tr>
+		<td width='100'>Modus</td>
+		<td>
+			<select name="ColorMode" onChange="window.location.href='?DIALEKT=' + this.options[this.selectedIndex].value">
+				<option value="BAYER" >dreiviertel</option>
+				<option value="FRANK" >viertel vor</option>
+				<option value="HOCH" >viertel vor</option>
+			</select>
+		</td>
+	</tr>
+</table>
 <h3>Helligkeit</h3>
 <table>
 	<tr>

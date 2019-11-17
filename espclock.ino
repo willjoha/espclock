@@ -1,6 +1,7 @@
+
 #include <FS.h>                   
                                   // From the WifiManager AutoConnectWithFSParameters: 
-                                  // this needs to be first, or it all crashes and burns... hmmm is this really the case?
+                                  // this needs to be first, or it all crashes and burns...
 
 #define FASTLED_ESP8266_RAW_PIN_ORDER  
 
@@ -18,12 +19,14 @@
 #include <WiFiManager.h>          // https://github.com/tzapu/WiFiManager v0.14.0
 #include <ArduinoJson.h>          // https://github.com/bblanchon/ArduinoJson v6.11.5
 #include <Ticker.h>               // ESP8266 board packagage v2.5.2
+#include <ArduinoOTA.h>           // arduinoOTA 1.0.1
+
+
+//#define OTA    // produces FATAL EXCEPTION for some reason
 
 Ticker ticker;
-
 WiFiServer server(80);
 unsigned long ulReqcount;
-
 
 
 /*
@@ -34,9 +37,13 @@ unsigned long ulReqcount;
 
  // Number of LEDs used for the clock (11x10 + 4 minute LEDs + 4 spare LEDs)
 #ifdef SMALLCLOCK
-#define NUM_LEDS 118
+	#define NUM_LEDS 118
 #else
+	#ifdef BIGCLOCK2
+#define NUM_LEDS 122
+	#else
 #define NUM_LEDS 114
+	#endif
 #endif
 
 // initial values for first time run
@@ -273,7 +280,7 @@ void writeSettings()
 {
 	Serial.println("writing config");
 
-	StaticJsonDocument<200> jsonBuffer;
+	StaticJsonDocument<250> jsonBuffer;
 
 	CRGB ledcolor;
 	ledcolor = clockDisp.getColor();
@@ -295,6 +302,26 @@ void writeSettings()
 	jsonBuffer["DayM"] = DayTime.Minute;
 	jsonBuffer["NigH"] = NightTime.Hour;
 	jsonBuffer["NigM"] = NightTime.Minute;
+
+
+	// word schema
+	if (CClockDisplay::e_Bayerisch == clockDisp.getDialekt())
+	{
+		jsonBuffer["Words"] = "bay";
+	}
+	else if (CClockDisplay::e_Frankisch == clockDisp.getDialekt())
+	{
+		jsonBuffer["Words"] = "fra";
+	}
+	else if (CClockDisplay::e_Hochdeutsch == clockDisp.getDialekt())
+	{
+		jsonBuffer["Words"] = "hoc";
+	}
+	else
+	{
+		jsonBuffer["Words"] = "bay";
+	}
+
 
 	// ColorMode
 	if (CClockDisplay::e_ModeGlitter == clockDisp.getColorMode())
@@ -359,13 +386,16 @@ void readSettings()
 
 			configFile.readBytes(buf.get(), size);
 
-			StaticJsonDocument<200> json;
+			StaticJsonDocument<250> json;
 			auto error = deserializeJson(json, buf.get());
 			if (error)
 			{
 				Serial.println("INIT: failed to parse config file");
 				return;
 			}
+
+			serializeJson(json, Serial);
+			Serial.println();
 
 			// brightness settings
 			if (json["day"])
@@ -452,13 +482,44 @@ void readSettings()
 				else
 				{
 					clockDisp.setColorMode(CClockDisplay::e_ModeSolid);
-					Serial.println("INIT: colormode=solid");
+					Serial.println("INIT: colormode=solid (default_1)");
 				}
 			}
 			else
 			{
 				clockDisp.setColorMode(CClockDisplay::e_ModeSolid);
-				Serial.println("INIT: default colormode=solid");
+				Serial.println("INIT: default colormode=solid (default_2)");
+			}
+
+			// Word schema
+			String colSchema = json["Words"];
+			if (colSchema.length() > 0)
+			{
+				if (colSchema.equals("bay"))
+				{
+					clockDisp.setDialekt(CClockDisplay::e_Bayerisch);
+					Serial.println("INIT: words=BAYERISCH");
+				}
+				else if (colSchema.equals("fra"))
+				{
+					clockDisp.setDialekt(CClockDisplay::e_Frankisch);
+					Serial.println("INIT: words=FRAENKISCH");
+				}
+				else if (colSchema.equals("hoc"))
+				{
+					clockDisp.setDialekt(CClockDisplay::e_Hochdeutsch);
+					Serial.println("INIT: words=HOCHDEUTSCH");
+				}
+				else
+				{
+					clockDisp.setDialekt(CClockDisplay::e_Bayerisch);
+					Serial.println("INIT: words=BAYERISCH_2");
+				}
+			}
+			else
+			{
+				clockDisp.setDialekt(CClockDisplay::e_Bayerisch);
+				Serial.println("INIT: words=BAYERISCH_1");
 			}
 		}
 		else
@@ -482,8 +543,9 @@ void setDefaults()
 
 	setDayStart("06:00");
 	setNightStart("22:00");
-
+	
 	clockDisp.setColorMode(CClockDisplay::e_ModeSolid);
+	clockDisp.setDialekt(CClockDisplay::e_Bayerisch);
 }
 
 
@@ -656,6 +718,63 @@ void setup()
 	Serial.println("Webserver - server started");
 
 	ticker.detach();
+
+#ifdef OTA
+	ArduinoOTA.onStart([]() 
+	{
+		String type;
+		if (ArduinoOTA.getCommand() == U_FLASH) 
+		{
+			type = "sketch";
+		}
+		else 
+		{ // U_FS
+			type = "filesystem";
+		}
+
+		// NOTE: if updating FS this would be the place to unmount FS using FS.end()
+		Serial.println("Start updating " + type);
+	});
+	ArduinoOTA.onEnd([]() 
+	{
+		Serial.println("\nEnd");
+	});
+	ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+		Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+	});
+	ArduinoOTA.onError([](ota_error_t error) 
+	{
+		Serial.printf("Error[%u]: ", error);
+		if (error == OTA_AUTH_ERROR) 
+		{
+			Serial.println("Auth Failed");
+		}
+		else if (error == OTA_BEGIN_ERROR) 
+		{
+			Serial.println("Begin Failed");
+		}
+		else if (error == OTA_CONNECT_ERROR) 
+		{
+			Serial.println("Connect Failed");
+		}
+		else if (error == OTA_RECEIVE_ERROR) 
+		{
+			Serial.println("Receive Failed");
+		}
+		else if (error == OTA_END_ERROR) 
+		{
+			Serial.println("End Failed");
+		}
+	});
+
+#ifdef SMALLCLOCK	
+	ArduinoOTA.setHostname("SMALLWORD");
+#else
+	ArduinoOTA.setHostname("BIGWORD");
+#endif
+
+	ArduinoOTA.begin();
+#endif
 }
 
 
@@ -666,9 +785,12 @@ void setup()
 */
 void loop () 
 {
-
 	// reconnect WiFiManager, if needed
 	WiFiReconnect();
+
+#ifdef OTA
+	ArduinoOTA.handle();
+#endif
 
 	if (timeSet != timeStatus())
 	{
@@ -699,70 +821,70 @@ void loop ()
 		if (pattern > 2)
 			pattern = 0;
 
-		switch (pattern)
-		{
-		case 0:
-			{
-				// JUGGLE: eight colored dots, weaving in and out of sync with each other
-				fadeToBlackBy(leds, NUM_LEDS, 20);
-				byte dothue = 0;
-				for (int i = 0; i < 4; i++)
-				{
-					leds[beatsin16(i + 2, 0, NUM_LEDS)] |= CHSV(dothue, 200, 255);
-					dothue += 50;
-				}
-			}
-			break;
+		//switch (pattern)
+		//{
+		//case 0:
+		//	{
+		//		// JUGGLE: eight colored dots, weaving in and out of sync with each other
+		//		fadeToBlackBy(leds, NUM_LEDS, 20);
+		//		byte dothue = 0;
+		//		for (int i = 0; i < 4; i++)
+		//		{
+		//			leds[beatsin16(i + 2, 0, NUM_LEDS)] |= CHSV(dothue, 200, 255);
+		//			dothue += 50;
+		//		}
+		//	}
+		//	break;
 
-		case 1:
+		//case 1:
 			{
 				// CONFETTI: random colored speckles that blink in and fade smoothly
 				fadeToBlackBy(leds, NUM_LEDS, 10);
 				int pos = random16(NUM_LEDS);
 				leds[pos] += CHSV(gHue + random8(64), 200, 255);			
 			}
-			break;
+		//	break;
 
-		case 2:
-			{
-				// SINELON: a colored dot sweeping back and forth, with fading trails
-				fadeToBlackBy(leds, NUM_LEDS, 20);
-				int pos = beatsin16(13, 0, NUM_LEDS);
-				leds[pos] += CHSV(gHue, 255, 192);
-			}
-			break;
+		//case 2:
+		//	{
+		//		// SINELON: a colored dot sweeping back and forth, with fading trails
+		//		fadeToBlackBy(leds, NUM_LEDS, 20);
+		//		int pos = beatsin16(13, 0, NUM_LEDS);
+		//		leds[pos] += CHSV(gHue, 255, 192);
+		//	}
+		//	break;
 
-		case 3:
-			{
-				// BPM: colored stripes pulsing at a defined Beats-Per-Minute (BPM)
-				uint8_t BeatsPerMinute = 62;
-				CRGBPalette16 palette = PartyColors_p;
-				uint8_t beat = beatsin8(BeatsPerMinute, 64, 255);
-				for (int i = 0; i < NUM_LEDS; i++)
-				{ //9948
-					leds[i] = ColorFromPalette(palette, gHue + (i * 2), beat - gHue + (i * 10));
-				}			
-			}
-			break;
+		//case 3:
+		//	{
+		//		// BPM: colored stripes pulsing at a defined Beats-Per-Minute (BPM)
+		//		uint8_t BeatsPerMinute = 62;
+		//		CRGBPalette16 palette = PartyColors_p;
+		//		uint8_t beat = beatsin8(BeatsPerMinute, 64, 255);
+		//		for (int i = 0; i < NUM_LEDS; i++)
+		//		{ //9948
+		//			leds[i] = ColorFromPalette(palette, gHue + (i * 2), beat - gHue + (i * 10));
+		//		}			
+		//	}
+		//	break;
 
-		case 4:
-			{
-				// RAINBOW: FastLED's built-in rainbow generator
-				fill_rainbow(leds, NUM_LEDS, gHue, 7);
-			}
-			break;
+		//case 4:
+		//	{
+		//		// RAINBOW: FastLED's built-in rainbow generator
+		//		fill_rainbow(leds, NUM_LEDS, gHue, 7);
+		//	}
+		//	break;
 
-		case 5:
-			{
-				// RAINBOW WITH GLITTER
-				fill_rainbow(leds, NUM_LEDS, gHue, 7);
-				if (random8() < 80)
-				{
-					leds[random16(NUM_LEDS)] += CRGB::White;
-				}
-			}
-			break;
-		}
+		//case 5:
+		//	{
+		//		// RAINBOW WITH GLITTER
+		//		fill_rainbow(leds, NUM_LEDS, gHue, 7);
+		//		if (random8() < 80)
+		//		{
+		//			leds[random16(NUM_LEDS)] += CRGB::White;
+		//		}
+		//	}
+		//	break;
+		//}
 
 		FastLED.show();
 
@@ -1023,6 +1145,21 @@ void loop ()
 					clockDisp.setColorMode(clockDisp.e_ModeRainbow_3);
 				}
 			}
+			else if (sCmd.indexOf("DIALEKT") >= 0)
+			{
+				if (sVal.equals("BAYER"))
+				{
+					clockDisp.setDialekt(clockDisp.e_Bayerisch);
+				}
+				else if (sVal.equals("FRANK"))
+				{
+					clockDisp.setDialekt(clockDisp.e_Frankisch);
+				}
+				else if (sVal.equals("HOCH"))
+				{
+					clockDisp.setDialekt(clockDisp.e_Hochdeutsch);
+				}
+			}
 			else if (sCmd.indexOf("HUEDELTA") >= 0)
 			{
 				//clockDisp.setHueDelta(iVal);
@@ -1049,6 +1186,24 @@ void loop ()
 		sResponse += "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=yes\">\r\n";
 		sResponse += "</head>\r\n<body style='font-family:verdana;background:#FBFBEF'>\r\n";
 		sResponse += "<h1>Word Clock</h1>\r\n";
+
+		sResponse += "<h3>Wort Schema</h3>\r\n";
+		sResponse += "<table>\r\n";
+		sResponse += "<tr><td width='100'>Modus</td>\r\n<td>\r\n";
+		sResponse += "<select name=\"WordMode\" onChange=\"window.location.href='?DIALEKT=' + this.options[this.selectedIndex].value\">\r\n";
+		sResponse += "<option value=\"BAYER\"";
+		sResponse += (clockDisp.getDialekt() == CClockDisplay::e_Bayerisch) ? " selected" : "";
+		sResponse += " >Bayerisch</option>\r\n";
+		sResponse += "<option value=\"FRANK\"";
+		sResponse += (clockDisp.getDialekt() == CClockDisplay::e_Frankisch) ? " selected" : "";
+		sResponse += " >Fr&auml;nkisch</option>\r\n";
+		sResponse += "<option value=\"HOCH\"";
+		sResponse += (clockDisp.getDialekt() == CClockDisplay::e_Hochdeutsch) ? " selected" : "";
+		sResponse += " >Hochdeutsch</option>\r\n";
+		sResponse += "</select>\r\n";
+		sResponse += "</td></tr>";
+		sResponse += "</table>\r\n";
+
 		sResponse += "<h3>Helligkeit</h3>\r\n";
 		sResponse += "<table>\r\n";
 		sResponse += "<tr><td width='100'>Tageszeit</td>\r\n";
@@ -1059,7 +1214,6 @@ void loop ()
 		sResponse += getTimeString(NightTime);
 		sResponse += "' type ='time'/>";
 		sResponse += "</td></tr>\r\n";
-
 		sResponse += "<tr><td width='100'>bei Tag</td>\r\n";
 		sResponse += "<td><button type='button' onclick=\"window.location.href='?DAY=MINUS'\"><</button><input onchange=\"window.location.href='?DAY='+this.value;\" value='";
 		sResponse += brightnessDay;
@@ -1067,7 +1221,6 @@ void loop ()
 		sResponse += "<button type='button' onclick=\"window.location.href='?DAY=PLUS'\">></button>&nbsp;&nbsp;";
 		sResponse += brightnessDay;
 		sResponse += "</td></tr>\r\n";
-
 		sResponse += "<tr><td width='100'>bei Nacht</td>\r\n";
 		sResponse += "<td><button type='button' onclick=\"window.location.href='?NIGHT=MINUS'\"><</button><input onchange=\"window.location.href='?NIGHT='+this.value;\" value='";
 		sResponse += brightnessNight;
@@ -1156,7 +1309,15 @@ void loop ()
 #ifdef STRIPE_SK9822
 		sResponse3 += "SK9822";
 #endif
+		sResponse3 += "</td></tr>\r\n";
+		sResponse3 += "<tr><td width='100'>Sketch info:</td>\r\n";
+		sResponse3 += "<td>free ";
+		sResponse3 += ESP.getFreeSketchSpace();
+		sResponse3 += " (using ";
+		sResponse3 += ESP.getSketchSize();
+		sResponse3 += ")";
 		sResponse3 += "</td></tr></table>\r\n";
+
 		sResponse3 += "<button type = \"button\" onclick=\"window.location.href = '?DEMO=true'\">LED Demo</button>\r\n";
 		sResponse3 += "</body></html>\r\n";
 

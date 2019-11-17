@@ -1,7 +1,11 @@
 #ifndef _CCLOCKDISPLAY_H
 #define _CCLOCKDISPLAY_H
 
-//#define SMALLCLOCK
+
+#define SMALLCLOCK
+//#define BIGCLOCK
+//#define BIGCLOCK2
+
 
 #include "IDisplay.h"
 #include <TimeLib.h>             
@@ -12,7 +16,7 @@ public:
   CClockDisplay();
   virtual ~CClockDisplay();
 
-  // Color mode for LED
+  // Color mode for LED colors
   enum eColorMode
   {
 	  e_ModeSolid,
@@ -23,15 +27,25 @@ public:
 	  e_ModeGlitter
   };
 
+  // Dialekt for word
+  enum eDialekt
+  {
+	  e_Bayerisch,
+      e_Frankisch,
+	  e_Hochdeutsch
+  };
+
+
   virtual bool setup(CRGB* leds, bool* leds_fill, int numLEDs);
   virtual bool update(bool force=false);
 
   CRGB getColor();
   void setColor(const CRGB& color);
   void setTimezone(Timezone* pTZ);
-
   void setColorMode(eColorMode ColorMode);
   eColorMode getColorMode();
+  void setDialekt(eDialekt myDialekt);
+  eDialekt getDialekt();
 
 
 private:
@@ -49,6 +63,8 @@ private:
 
   int m_currentMinute;
   Timezone* m_pTZ;
+
+  eDialekt m_Dialekt;
 };
 
 #endif

@@ -64,17 +64,24 @@ const int MIN2[]    = { 112, 113, -1 };
 const int MIN3[]    = { 112, 113, 114, -1 };
 const int MIN4[]    = { 112, 113, 114, 115, -1 };
 #else
-const int MIN1[]    = { 113, -1 };
-const int MIN2[]    = { 113, 112, -1 };
-const int MIN3[]    = { 113, 112, 111, -1 };
-const int MIN4[]    = { 113, 112, 111, 110, -1 };
+#ifdef BIGCLOCK2
+const int MIN1[] = { 121, -1 };
+const int MIN2[] = { 121, 120, -1 };
+const int MIN3[] = { 121, 120, 110, -1 };
+const int MIN4[] = { 121, 120, 110, 119, -1 };
+#else
+const int MIN1[] = { 113, -1 };
+const int MIN2[] = { 113, 112, -1 };
+const int MIN3[] = { 113, 112, 111, -1 };
+const int MIN4[] = { 113, 112, 111, 110, -1 };
+#endif
 #endif
 const int DST[]     = { 109, -1};
 
 
 
 
-CClockDisplay::CClockDisplay() : m_pLEDs(0), m_pLEDsFill(0), m_numLEDs(0), m_color(CRGB::Red), m_currentMinute(-1), m_pTZ(0), m_ColorMode(e_ModeSolid)
+CClockDisplay::CClockDisplay() : m_pLEDs(0), m_pLEDsFill(0), m_numLEDs(0), m_color(CRGB::Red), m_currentMinute(-1), m_pTZ(0), m_ColorMode(e_ModeSolid), m_Dialekt(e_Bayerisch)
 {
 
 }
@@ -92,7 +99,6 @@ bool CClockDisplay::setup(CRGB* leds, bool* leds_fill, int numLEDs)
 
 	return true;
 }
-
 
 bool CClockDisplay::update(bool force)
 {
@@ -149,6 +155,16 @@ bool CClockDisplay::update(bool force)
 	}
 
   return false;
+}
+
+void CClockDisplay::setDialekt(CClockDisplay::eDialekt myDialekt)
+{
+	m_Dialekt = myDialekt;
+}
+
+CClockDisplay::eDialekt CClockDisplay::getDialekt()
+{
+	return m_Dialekt;
 }
 
 CRGB CClockDisplay::getColor()
@@ -309,71 +325,87 @@ void CClockDisplay::display_time(const int hour, const int minute)
   
 	switch (roundMinute) 
 	{
-		case 0: compose(UHR);
+		case 0: 
+			compose(UHR);
 			Serial.print(", case 0");
 			break;
-		case 5: compose(FUENF_M);
+		case 5: 
+			compose(FUENF_M);
 			compose(NACH);
 			Serial.print(", case 5");
 			break;
-		case 10: compose(ZEHN_M);
+		case 10: 
+			compose(ZEHN_M);
 			compose(NACH);
 			Serial.print(", case 10");
 			break;
-		#ifdef SOUTH_GERMAN_VERSION
-		case 15: compose(VIERTEL);
-			displayHour++;
-			Serial.print(", case 15-sg");
+		case 15: 
+			if (m_Dialekt == e_Bayerisch || m_Dialekt == e_Hochdeutsch)
+			{
+				compose(VIERTEL); 
+				compose(NACH);
+				Serial.print(", case 15-!nsg");
+			}
+			else
+			{
+				compose(VIERTEL); 
+				displayHour++;
+				Serial.print(", case 15-sg");
+			}
 			break;
-		#else
-		case 15: compose(VIERTEL);
-			compose(NACH);
-			Serial.print(", case 15-!nsg");
-			break;
-		#endif
-		case 20: compose(ZWANZIG);
+		case 20: 
+			compose(ZWANZIG);
 			compose(NACH);
 			Serial.print(", case 20");
 			break;
-		case 25: compose(FUENF_M);
+		case 25: 
+			compose(FUENF_M);
 			compose(VOR);
 			compose(HALB);
 			displayHour++;
 			Serial.print(", case 25");
 			break;
-		case 30: compose(HALB);
+		case 30: 
+			compose(HALB);
 			displayHour++;
 			Serial.print(", case 30");
 			break;
-		case 35: compose(FUENF_M);
+		case 35: 
+			compose(FUENF_M);
 			compose(NACH);
 			compose(HALB);
 			displayHour++;
 			Serial.print(", case 35");
 			break;
-		case 40: compose(ZWANZIG);
+		case 40: 
+			compose(ZWANZIG);
 			compose(VOR);
 			displayHour++;
 			Serial.print(", case 40");
 			break;
-		#ifdef SOUTH_GERMAN_VERSION        
-		case 45: compose(DREIVIERTEL);
-			displayHour++;
-			Serial.print(", case 45-sg");
+		case 45: 
+			if (m_Dialekt == e_Frankisch || m_Dialekt == e_Bayerisch)
+			{
+				compose(DREIVIERTEL);
+				displayHour++;
+				Serial.print(", case 45-sg");
+ 			}
+			else
+			{	
+				compose(VIERTEL);
+				compose(VOR);
+				displayHour++;
+				Serial.print(", case 45-!sg");
+			}
 			break;
-		#else
-		case 45: compose(VIERTEL);
-			compose(VOR);
-			displayHour++;
-			Serial.print(", case 45-!sg");
-			break;
-		#endif
-		case 50: compose(ZEHN_M);
+		case 50: 
+			compose(ZEHN_M);
 			compose(VOR);
 			displayHour++;
 			Serial.print(", case 50");
 			break;
-		case 55: compose(FUENF_M);
+		case 55: 
+			compose(FUENF_M);
 			compose(VOR);
 			displayHour++;
 			Serial.print(", case 55");
@@ -414,4 +446,3 @@ void CClockDisplay::display_time(const int hour, const int minute)
 		m_pLEDs[random8(m_numLEDs)] = CRGB::White;
 	}
 }
-
