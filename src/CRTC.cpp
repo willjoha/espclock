@@ -47,6 +47,8 @@ bool CRTC::setup()
   
   Rtc.Enable32kHzPin(false);
   Rtc.SetSquareWavePin(DS3231SquareWavePin_ModeNone);
+
+  return true;
 }
 
 
