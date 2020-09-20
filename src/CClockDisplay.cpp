@@ -64,17 +64,10 @@ const int MIN2[]    = { 112, 113, -1 };
 const int MIN3[]    = { 112, 113, 114, -1 };
 const int MIN4[]    = { 112, 113, 114, 115, -1 };
 #else
-#ifdef BIGCLOCK2
-const int MIN1[] = { 121, -1 };
-const int MIN2[] = { 121, 120, -1 };
-const int MIN3[] = { 121, 120, 110, -1 };
-const int MIN4[] = { 121, 120, 110, 119, -1 };
-#else
 const int MIN1[] = { 113, -1 };
 const int MIN2[] = { 113, 112, -1 };
 const int MIN3[] = { 113, 112, 111, -1 };
 const int MIN4[] = { 113, 112, 111, 110, -1 };
-#endif
 #endif
 const int DST[]     = { 109, -1};
 

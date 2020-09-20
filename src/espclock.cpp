@@ -1,31 +1,32 @@
+#include <Arduino.h>
 
-#include <FS.h>                   
-                                  // From the WifiManager AutoConnectWithFSParameters: 
-                                  // this needs to be first, or it all crashes and burns...
+ #include <FS.h>                  // From the WifiManager AutoConnectWithFSParameters: this needs to be first, or it all crashes and burns...
 
 #define FASTLED_ESP8266_RAW_PIN_ORDER  
 
-#include <TimeLib.h>              // http://www.arduino.cc/playground/Code/Time Time, by Michael Margolis includes
-                                  // https://github.com/PaulStoffregen/Time V1.5 
+#include <TimeLib.h>              // http://www.arduino.cc/playground/Code/Time Time, by Michael Margolis, includes  https://github.com/PaulStoffregen/Time V1.5
 #include "CRTC.h"
 #include "CNTPClient.h"
 #include <Timezone.h>             // https://github.com/JChristensen/Timezone v1.2.2
 #include <FastLED.h>              // https://github.com/FastLED/FastLED v3.2.10
 #include "CFadeAnimation.h"
 #include "CClockDisplay.h"
-#include <ESP8266WiFi.h>          // ESP8266 board packagage v2.5.2
-#include <DNSServer.h>            // ESP8266 board packagage v2.5.2
-#include <ESP8266WebServer.h>     // ESP8266 board packagage v2.5.2
+
+#include <ESP8266WiFi.h>          // ESP8266 board packagage 
+#include <DNSServer.h>            // ESP8266 board packagage 
+
+#include <ESP8266WebServer.h>     // ESP8266 board packagage 
+
 #include <WiFiManager.h>          // https://github.com/tzapu/WiFiManager v0.14.0
 #include <ArduinoJson.h>          // https://github.com/bblanchon/ArduinoJson v6.11.5
-#include <Ticker.h>               // ESP8266 board packagage v2.5.2
-#include <ArduinoOTA.h>           // arduinoOTA 1.0.1
 
+#include <Ticker.h>               // ESP8266 board packagage 
 
-//#define OTA    // produces FATAL EXCEPTION for some reason
 
 Ticker ticker;
 WiFiServer server(80);
+
+
 unsigned long ulReqcount;
 
 
@@ -39,11 +40,7 @@ unsigned long ulReqcount;
 #ifdef SMALLCLOCK
 	#define NUM_LEDS 118
 #else
-	#ifdef BIGCLOCK2
-#define NUM_LEDS 122
-	#else
 #define NUM_LEDS 114
-	#endif
 #endif
 
 // initial values for first time run
@@ -74,6 +71,7 @@ int pattern = 0;
 //The default values for the NTP server
 char ntp_server[50] = "0.de.pool.ntp.org";
 char clock_version[15] = __DATE__;
+bool bRestarted = true;
 
 
 /*
@@ -350,7 +348,7 @@ void writeSettings()
 	}
 
 	File configFile = SPIFFS.open("/config.json", "w");
-	if (!configFile)
+	if ( !configFile )
 	{
 		Serial.println("failed to open config file for writing");
 		return;
@@ -363,171 +361,186 @@ void writeSettings()
 	Serial.println("done saving");
 }
 
+
 void readSettings()
 {
-	if (SPIFFS.exists("/config.json"))
+	if ( SPIFFS.begin() )
 	{
-		Serial.println("INIT: reading config file");
-
-		File configFile = SPIFFS.open("/config.json", "r");
-		if (configFile)
+		if ( SPIFFS.exists("/config.json") )
 		{
-			Serial.println("INIT: opened config file");
+			Serial.println("INIT: reading config file");
 
-			size_t size = configFile.size();
-			if (size > 1024)
+			File configFile = SPIFFS.open("/config.json", "r");
+			if (configFile)
 			{
-				Serial.println("INIT: config file size is too large");
-				return;
-			}
+				Serial.println("INIT: opened config file");
 
-			// Allocate a buffer to store contents of the file.
-			std::unique_ptr<char[]> buf(new char[size]);
-
-			configFile.readBytes(buf.get(), size);
-
-			StaticJsonDocument<250> json;
-			auto error = deserializeJson(json, buf.get());
-			if (error)
-			{
-				Serial.println("INIT: failed to parse config file");
-				return;
-			}
-
-			serializeJson(json, Serial);
-			Serial.println();
-
-			// brightness settings
-			if (json["day"])
-				brightnessDay = int(json["day"]);
-
-			if (json["night"])
-				brightnessNight = int(json["night"]);
-
-			brightness = brightnessDay;
-
-			Serial.print("INIT: brightness=");
-			Serial.print(brightnessDay);
-			Serial.print("/");
-			Serial.println(brightnessNight);
-
-			// color settings
-			CRGB ledcolor;
-			if (json["red"])
-				ledcolor.r = int(json["red"]);
-			if (json["green"])
-				ledcolor.g = int(json["green"]);
-			if (json["blue"])
-				ledcolor.b = int(json["blue"]);
-
-			Serial.print("INIT: color=");
-			Serial.print(ledcolor.r);
-			Serial.print("/");
-			Serial.print(ledcolor.g);
-			Serial.print("/");
-			Serial.println(ledcolor.b);
-
-			clockDisp.setColor(ledcolor);
-
-			// day-night switch for brightness
-			if (json["DayH"]) 
-				DayTime.Hour = int(json["DayH"]);
-			if (json["DayM"])
-				DayTime.Minute = int(json["DayM"]);
-			if (json["NigH"])
-				NightTime.Hour = int(json["NigH"]);
-			if (json["NigM"])
-				NightTime.Minute = int(json["NigM"]);
-
-			Serial.print("INIT: Day-Night=");
-			Serial.print(getTimeString(DayTime));
-			Serial.print("-");
-			Serial.println(getTimeString(NightTime));
-
-			if (json["ntp_server"])
-				strcpy(ntp_server, json["ntp_server"]);
-
-			Serial.print("INIT: NTP=");
-			Serial.println(ntp_server);
-
-			// ColorMode
-			String colMode = json["ColMo"];
-			if (colMode.length() > 0)
-			{
-				if (colMode.equals("glit") )
+				size_t size = configFile.size();
+				if (size > 1024)
 				{
-					clockDisp.setColorMode(CClockDisplay::e_ModeGlitter);
-					Serial.println("INIT: colormode=glitter");
+					Serial.println("INIT: config file size is too large");
+					return;
 				}
-				else if (colMode.equals("grad"))
+
+				// Allocate a buffer to store contents of the file.
+				std::unique_ptr<char[]> buf(new char[size]);
+
+				configFile.readBytes(buf.get(), size);
+
+				StaticJsonDocument<250> json;
+				auto error = deserializeJson(json, buf.get());
+				if (error)
 				{
-					clockDisp.setColorMode(CClockDisplay::e_ModeGradient);
-					Serial.println("INIT: coloparsedrmode=gradient");
+					Serial.println("INIT: failed to parse config file");
+					return;
 				}
-				else if (colMode.equals("rain1"))
+
+				configFile.close();
+
+				serializeJson(json, Serial);
+				Serial.println();
+
+				// brightness settings
+				if (json["day"])
+					brightnessDay = int(json["day"]);
+
+				if (json["night"])
+					brightnessNight = int(json["night"]);
+
+				brightness = brightnessDay;
+
+				Serial.print("INIT: brightness=");
+				Serial.print(brightnessDay);
+				Serial.print("/");
+				Serial.println(brightnessNight);
+
+				// color settings
+				CRGB ledcolor;
+				if (json["red"])
+					ledcolor.r = int(json["red"]);
+				if (json["green"])
+					ledcolor.g = int(json["green"]);
+				if (json["blue"])
+					ledcolor.b = int(json["blue"]);
+
+				Serial.print("INIT: color=");
+				Serial.print(ledcolor.r);
+				Serial.print("/");
+				Serial.print(ledcolor.g);
+				Serial.print("/");
+				Serial.println(ledcolor.b);
+
+				clockDisp.setColor(ledcolor);
+
+				// day-night switch for brightness
+				if (json["DayH"]) 
+					DayTime.Hour = int(json["DayH"]);
+				if (json["DayM"])
+					DayTime.Minute = int(json["DayM"]);
+				if (json["NigH"])
+					NightTime.Hour = int(json["NigH"]);
+				if (json["NigM"])
+					NightTime.Minute = int(json["NigM"]);
+
+				Serial.print("INIT: Day-Night=");
+				Serial.print(getTimeString(DayTime));
+				Serial.print("-");
+				Serial.println(getTimeString(NightTime));
+
+				if (json["ntp_server"])
+					strcpy(ntp_server, json["ntp_server"]);
+
+				Serial.print("INIT: NTP=");
+				Serial.println(ntp_server);
+
+				// ColorMode
+				String colMode = json["ColMo"];
+				if (colMode.length() > 0)
 				{
-					clockDisp.setColorMode(CClockDisplay::e_ModeRainbow_1);
-					Serial.println("INIT: colormode=rainbow1");
-				}
-				else if (colMode.equals("rain2"))
-				{
-					clockDisp.setColorMode(CClockDisplay::e_ModeRainbow_2);
-					Serial.println("INIT: colormode=rainbow2");
-				}
-				else if (colMode.equals("rain3"))
-				{
-					clockDisp.setColorMode(CClockDisplay::e_ModeRainbow_3);
-					Serial.println("INIT: colormode=rainbow3");
+					if (colMode.equals("glit") )
+					{
+						clockDisp.setColorMode(CClockDisplay::e_ModeGlitter);
+						Serial.println("INIT: colormode=glitter");
+					}
+					else if (colMode.equals("grad"))
+					{
+						clockDisp.setColorMode(CClockDisplay::e_ModeGradient);
+						Serial.println("INIT: coloparsedrmode=gradient");
+					}
+					else if (colMode.equals("rain1"))
+					{
+						clockDisp.setColorMode(CClockDisplay::e_ModeRainbow_1);
+						Serial.println("INIT: colormode=rainbow1");
+					}
+					else if (colMode.equals("rain2"))
+					{
+						clockDisp.setColorMode(CClockDisplay::e_ModeRainbow_2);
+						Serial.println("INIT: colormode=rainbow2");
+					}
+					else if (colMode.equals("rain3"))
+					{
+						clockDisp.setColorMode(CClockDisplay::e_ModeRainbow_3);
+						Serial.println("INIT: colormode=rainbow3");
+					}
+					else
+					{
+						clockDisp.setColorMode(CClockDisplay::e_ModeSolid);
+						Serial.println("INIT: colormode=solid (default_1)");
+					}
 				}
 				else
 				{
 					clockDisp.setColorMode(CClockDisplay::e_ModeSolid);
-					Serial.println("INIT: colormode=solid (default_1)");
+					Serial.println("INIT: default colormode=solid (default_2)");
 				}
-			}
-			else
-			{
-				clockDisp.setColorMode(CClockDisplay::e_ModeSolid);
-				Serial.println("INIT: default colormode=solid (default_2)");
-			}
 
-			// Word schema
-			String colSchema = json["Words"];
-			if (colSchema.length() > 0)
-			{
-				if (colSchema.equals("bay"))
+				// Word schema
+				String colSchema = json["Words"];
+				if (colSchema.length() > 0)
 				{
-					clockDisp.setDialekt(CClockDisplay::e_Bayerisch);
-					Serial.println("INIT: words=BAYERISCH");
-				}
-				else if (colSchema.equals("fra"))
-				{
-					clockDisp.setDialekt(CClockDisplay::e_Frankisch);
-					Serial.println("INIT: words=FRAENKISCH");
-				}
-				else if (colSchema.equals("hoc"))
-				{
-					clockDisp.setDialekt(CClockDisplay::e_Hochdeutsch);
-					Serial.println("INIT: words=HOCHDEUTSCH");
+					if (colSchema.equals("bay"))
+					{
+						clockDisp.setDialekt(CClockDisplay::e_Bayerisch);
+						Serial.println("INIT: words=BAYERISCH");
+					}
+					else if (colSchema.equals("fra"))
+					{
+						clockDisp.setDialekt(CClockDisplay::e_Frankisch);
+						Serial.println("INIT: words=FRAENKISCH");
+					}
+					else if (colSchema.equals("hoc"))
+					{
+						clockDisp.setDialekt(CClockDisplay::e_Hochdeutsch);
+						Serial.println("INIT: words=HOCHDEUTSCH");
+					}
+					else
+					{
+						clockDisp.setDialekt(CClockDisplay::e_Bayerisch);
+						Serial.println("INIT: words=BAYERISCH (default 1)");
+					}
 				}
 				else
 				{
 					clockDisp.setDialekt(CClockDisplay::e_Bayerisch);
-					Serial.println("INIT: words=BAYERISCH_2");
+					Serial.println("INIT: words=BAYERISCH (default 2)");
 				}
 			}
 			else
 			{
-				clockDisp.setDialekt(CClockDisplay::e_Bayerisch);
-				Serial.println("INIT: words=BAYERISCH_1");
+				// no config file found, use defaults
+				Serial.println("INIT: config not found, using defaults");
 			}
 		}
 		else
 		{
-			// no config file found, use defaults
-			Serial.println("INIT: config not found, using defaults");
+		Serial.println("no config file.");
 		}
 	}
+	else
+	{
+		Serial.println("Failed to mount file system");
+	}
+
 }
 
 void setDefaults()
@@ -546,6 +559,27 @@ void setDefaults()
 	
 	clockDisp.setColorMode(CClockDisplay::e_ModeSolid);
 	clockDisp.setDialekt(CClockDisplay::e_Bayerisch);
+}
+
+void SetNewNtp(const char* ntp)
+{
+	strcpy(ntp_server, ntp);
+
+	IPAddress timeServerIP;
+	WiFi.hostByName(ntp_server, timeServerIP);
+
+	Serial.print("NTP Server: ");
+	Serial.print(ntp_server);
+	Serial.print(" - ");
+	Serial.println(timeServerIP);
+
+	// Rtc.setup();
+	Serial.println("Reinitializing RTC");
+
+	Ntp.setup(timeServerIP);
+	Rtc.setSyncProvider(&Ntp);
+	
+	setSyncProvider(getDateTimeFromRTC);
 }
 
 
@@ -581,27 +615,6 @@ void onWiFiConnected(const WiFiEventStationModeConnected& event)
 	eWiFiConnState = eWifiState::e_reconnect_needed;
 }
 
-void SetNewNtp(const char* ntp)
-{
-	strcpy(ntp_server, ntp);
-
-	IPAddress timeServerIP;
-	WiFi.hostByName(ntp_server, timeServerIP);
-
-	Serial.print("NTP Server: ");
-	Serial.print(ntp_server);
-	Serial.print(" - ");
-	Serial.println(timeServerIP);
-
-	// Rtc.setup();
-	Serial.println("Reinitializing RTC");
-
-	Ntp.setup(timeServerIP);
-	Rtc.setSyncProvider(&Ntp);
-	
-	setSyncProvider(getDateTimeFromRTC);
-}
-
 
 
 /*
@@ -611,15 +624,17 @@ void SetNewNtp(const char* ntp)
 */
 void setup()
 {
-	Serial.begin(57600);
+	Serial.begin(115200);
 
 	Serial.print("compiled: ");
 	Serial.print(__DATE__);
 	Serial.println(__TIME__);
 
+	bRestarted = true;
+
 	// init LEDs
 #ifdef STRIPE_APA102
-	Serial.println("init LED stripe SK9822...");
+	Serial.println("init LED stripe APA102...");
 	FastLED.addLeds<APA102, DATA_PIN, CLOCK_PIN, BGR>(leds, NUM_LEDS);
 #endif
 #ifdef STRIPE_SK9822
@@ -631,13 +646,6 @@ void setup()
 	clockDisp.setTimezone(&CE);
 
 	setDefaults();
-
-	if (!SPIFFS.begin())
-	{
-		Serial.println("Failed to mount file system");
-		return;
-	}
-
 	readSettings();
 
 	fill_solid( &(leds[0]), NUM_LEDS, CRGB::Black);
@@ -718,63 +726,6 @@ void setup()
 	Serial.println("Webserver - server started");
 
 	ticker.detach();
-
-#ifdef OTA
-	ArduinoOTA.onStart([]() 
-	{
-		String type;
-		if (ArduinoOTA.getCommand() == U_FLASH) 
-		{
-			type = "sketch";
-		}
-		else 
-		{ // U_FS
-			type = "filesystem";
-		}
-
-		// NOTE: if updating FS this would be the place to unmount FS using FS.end()
-		Serial.println("Start updating " + type);
-	});
-	ArduinoOTA.onEnd([]() 
-	{
-		Serial.println("\nEnd");
-	});
-	ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-		Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-	});
-	ArduinoOTA.onError([](ota_error_t error) 
-	{
-		Serial.printf("Error[%u]: ", error);
-		if (error == OTA_AUTH_ERROR) 
-		{
-			Serial.println("Auth Failed");
-		}
-		else if (error == OTA_BEGIN_ERROR) 
-		{
-			Serial.println("Begin Failed");
-		}
-		else if (error == OTA_CONNECT_ERROR) 
-		{
-			Serial.println("Connect Failed");
-		}
-		else if (error == OTA_RECEIVE_ERROR) 
-		{
-			Serial.println("Receive Failed");
-		}
-		else if (error == OTA_END_ERROR) 
-		{
-			Serial.println("End Failed");
-		}
-	});
-
-#ifdef SMALLCLOCK	
-	ArduinoOTA.setHostname("SMALLWORD");
-#else
-	ArduinoOTA.setHostname("BIGWORD");
-#endif
-
-	ArduinoOTA.begin();
-#endif
 }
 
 
@@ -787,10 +738,6 @@ void loop ()
 {
 	// reconnect WiFiManager, if needed
 	WiFiReconnect();
-
-#ifdef OTA
-	ArduinoOTA.handle();
-#endif
 
 	if (timeSet != timeStatus())
 	{
@@ -997,7 +944,7 @@ void loop ()
 		if (sCmd.length() > 0)
 		{
 			int iEqu = sParam.indexOf("=");
-			int iVal;
+			int iVal = 0;
 			String sVal;
 			if (iEqu >= 0)
 			{
@@ -1006,17 +953,21 @@ void loop ()
 			}
 
 			// switch GPIO
-			if (sCmd.indexOf("DAYSHIFT") >= 0)
+			if (sCmd.indexOf("DEMO") >= 0)
+			{
+				displayClock = !displayClock;
+			}
+			else if (sCmd.indexOf("RESTART") >= 0 && !bRestarted)
+			{
+				ESP.restart();
+			}
+			else if (sCmd.indexOf("DAYSHIFT") >= 0)
 			{
 				setDayStart(sVal);
 			}
 			else if (sCmd.indexOf("NIGHTSHIFT") >= 0)
 			{
 				setNightStart(sVal);
-			}
-			else if (sCmd.indexOf("DEMO") >= 0)
-			{
-				displayClock = !displayClock;
 			}
 			else if (sCmd.indexOf("RED") >= 0)
 			{
@@ -1318,7 +1269,8 @@ void loop ()
 		sResponse3 += ")";
 		sResponse3 += "</td></tr></table>\r\n";
 
-		sResponse3 += "<button type = \"button\" onclick=\"window.location.href = '?DEMO=true'\">LED Demo</button>\r\n";
+		sResponse3 += "<button type = \"button\" onclick=\"window.location.href = '?DEMO=true'\">LED Demo</button><br/>\r\n";
+		sResponse3 += "<button type = \"button\" onclick=\"window.location.href = '?RESTART=true'\">Neustart</button><br/>\r\n";
 		sResponse3 += "</body></html>\r\n";
 
 		sHeader = "HTTP/1.1 200 OK\r\n";
@@ -1339,4 +1291,6 @@ void loop ()
 	// and stop the client
 	client.stop();
 	Serial.println("Client disonnected");
+
+	bRestarted = false;
 }

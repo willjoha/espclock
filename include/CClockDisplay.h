@@ -4,7 +4,6 @@
 
 #define SMALLCLOCK
 //#define BIGCLOCK
-//#define BIGCLOCK2
 
 
 #include "IDisplay.h"
