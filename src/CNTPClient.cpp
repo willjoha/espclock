@@ -24,6 +24,8 @@ bool CNTPClient::setup(IPAddress timeServer)
   
   Serial.print("CNTPClient::Setup() - Local port: ");
   Serial.println(Udp.localPort());
+
+  return true;
 }
 
 void CNTPClient::setTimeServer(IPAddress timeServer)

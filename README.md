@@ -1,10 +1,10 @@
 # Word clock
 
-This project provides the code for a word clock. The layout is based on the famous original. Here color is controlled via Blynk. 
+This project provides the code for a word clock. The layout is based on the famous original. Here color is controlled via webpage. 
 
 ## Hardware:
 + ESP8266 NodeMCU
-+ LED stripe APA102c, alternativly SK9822
++ LED stripe APA102C, alternativly SK9822
 + Realtime clock DS3231
 
 ## Software Libraries:
@@ -12,7 +12,8 @@ This project provides the code for a word clock. The layout is based on the famo
 + WifiManager
 + Timezone
 + Timelib
-+ Blynk
++ ArduinoJSON
++ SPIFFS support
 
 Please check the code for the exact version and source url of each library. Running the clock requires at least 1A current. Please make sure that your powwer supply is stable enough.
 
@@ -22,3 +23,7 @@ Each letter is enlighted from a single LED. It's recommended to use a light gate
 
 #### update 2019-11-17
 added dialekt selection: dropdown box with "fränkisch", "baierisch" and "hochdeutsch".
+
+#### update 2020-09-20
+switched to Visual Studio Code and PlatformIO
+

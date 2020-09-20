@@ -54,15 +54,11 @@ private:
   
   CRGB* m_pLEDs;      // actual LEDs with color
   bool* m_pLEDsFill;  // construct LEDs here before applying to m_pLEDs
-
   int   m_numLEDs;
   CRGB  m_color;
-  
-  eColorMode m_ColorMode;
-
   int m_currentMinute;
   Timezone* m_pTZ;
-
+  eColorMode m_ColorMode;
   eDialekt m_Dialekt;
 };
 
