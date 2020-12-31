@@ -21,6 +21,7 @@
 #include <ArduinoJson.h>          // https://github.com/bblanchon/ArduinoJson v6.11.5
 
 #include <Ticker.h>               // ESP8266 board package
+#include <LITTLEFS.h>             // ESP8266 board package
 
 
 Ticker ticker;
@@ -346,7 +347,7 @@ void writeSettings()
 		jsonBuffer["ColMo"] = "sol";
 	}
 
-	File configFile = SPIFFS.open("/config.json", "w");
+	File configFile = LittleFS.open("/config.json", "w");
 	if ( !configFile )
 	{
 		Serial.println("failed to open config file for writing");
@@ -363,13 +364,13 @@ void writeSettings()
 
 void readSettings()
 {
-	if ( SPIFFS.begin() )
+	if ( LittleFS.begin() )
 	{
-		if ( SPIFFS.exists("/config.json") )
+		if ( LittleFS.exists("/config.json") )
 		{
 			Serial.println("INIT: reading config file");
 
-			File configFile = SPIFFS.open("/config.json", "r");
+			File configFile = LittleFS.open("/config.json", "r");
 			if (configFile)
 			{
 				Serial.println("INIT: opened config file");
