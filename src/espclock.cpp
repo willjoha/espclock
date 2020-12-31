@@ -1,6 +1,6 @@
 #include <Arduino.h>
 
- #include <FS.h>                  // From the WifiManager AutoConnectWithFSParameters: this needs to be first, or it all crashes and burns...
+#include <FS.h>                  // From the WifiManager AutoConnectWithFSParameters: this needs to be first, or it all crashes and burns...
 
 #define FASTLED_ESP8266_RAW_PIN_ORDER  
 
@@ -12,15 +12,15 @@
 #include "CFadeAnimation.h"
 #include "CClockDisplay.h"
 
-#include <ESP8266WiFi.h>          // ESP8266 board packagage 
-#include <DNSServer.h>            // ESP8266 board packagage 
+#include <ESP8266WiFi.h>          // ESP8266 board package
+#include <DNSServer.h>            // ESP8266 board package
 
-#include <ESP8266WebServer.h>     // ESP8266 board packagage 
+#include <ESP8266WebServer.h>     // ESP8266 board package
 
 #include <WiFiManager.h>          // https://github.com/tzapu/WiFiManager v0.14.0
 #include <ArduinoJson.h>          // https://github.com/bblanchon/ArduinoJson v6.11.5
 
-#include <Ticker.h>               // ESP8266 board packagage 
+#include <Ticker.h>               // ESP8266 board package
 
 
 Ticker ticker;
@@ -60,7 +60,6 @@ CRGB leds_target[NUM_LEDS];
 bool leds_fill[NUM_LEDS];
 
 uint8_t gHue = 0; // demo mode hue
-int pattern = 0;
 
 /*
  * ------------------------------------------------------------------------------
@@ -765,73 +764,11 @@ void loop ()
 	else
 	{
 		FastLED.setBrightness(brightnessDay);
-		if (pattern > 2)
-			pattern = 0;
 
-		//switch (pattern)
-		//{
-		//case 0:
-		//	{
-		//		// JUGGLE: eight colored dots, weaving in and out of sync with each other
-		//		fadeToBlackBy(leds, NUM_LEDS, 20);
-		//		byte dothue = 0;
-		//		for (int i = 0; i < 4; i++)
-		//		{
-		//			leds[beatsin16(i + 2, 0, NUM_LEDS)] |= CHSV(dothue, 200, 255);
-		//			dothue += 50;
-		//		}
-		//	}
-		//	break;
-
-		//case 1:
-			{
-				// CONFETTI: random colored speckles that blink in and fade smoothly
-				fadeToBlackBy(leds, NUM_LEDS, 10);
-				int pos = random16(NUM_LEDS);
-				leds[pos] += CHSV(gHue + random8(64), 200, 255);			
-			}
-		//	break;
-
-		//case 2:
-		//	{
-		//		// SINELON: a colored dot sweeping back and forth, with fading trails
-		//		fadeToBlackBy(leds, NUM_LEDS, 20);
-		//		int pos = beatsin16(13, 0, NUM_LEDS);
-		//		leds[pos] += CHSV(gHue, 255, 192);
-		//	}
-		//	break;
-
-		//case 3:
-		//	{
-		//		// BPM: colored stripes pulsing at a defined Beats-Per-Minute (BPM)
-		//		uint8_t BeatsPerMinute = 62;
-		//		CRGBPalette16 palette = PartyColors_p;
-		//		uint8_t beat = beatsin8(BeatsPerMinute, 64, 255);
-		//		for (int i = 0; i < NUM_LEDS; i++)
-		//		{ //9948
-		//			leds[i] = ColorFromPalette(palette, gHue + (i * 2), beat - gHue + (i * 10));
-		//		}			
-		//	}
-		//	break;
-
-		//case 4:
-		//	{
-		//		// RAINBOW: FastLED's built-in rainbow generator
-		//		fill_rainbow(leds, NUM_LEDS, gHue, 7);
-		//	}
-		//	break;
-
-		//case 5:
-		//	{
-		//		// RAINBOW WITH GLITTER
-		//		fill_rainbow(leds, NUM_LEDS, gHue, 7);
-		//		if (random8() < 80)
-		//		{
-		//			leds[random16(NUM_LEDS)] += CRGB::White;
-		//		}
-		//	}
-		//	break;
-		//}
+		// CONFETTI: random colored speckles that blink in and fade smoothly
+		fadeToBlackBy(leds, NUM_LEDS, 10);
+		int pos = random16(NUM_LEDS);
+		leds[pos] += CHSV(gHue + random8(64), 200, 255);
 
 		FastLED.show();
 
@@ -840,7 +777,6 @@ void loop ()
 
 		// do some periodic updates
 		EVERY_N_MILLISECONDS(20) { gHue++; } // slowly cycle the "base color" through the rainbow
-		EVERY_N_SECONDS(10) { pattern++; } // change patterns periodically
 	}
 
 	////////////////////////////////////////////////////////////////////////////
