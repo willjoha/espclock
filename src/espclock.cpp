@@ -21,7 +21,7 @@
 #include <ArduinoJson.h>          // https://github.com/bblanchon/ArduinoJson v6.11.5
 
 #include <Ticker.h>               // ESP8266 board package
-#include <LITTLEFS.h>             // ESP8266 board package
+#include <LittleFS.h>             // ESP8266 board package
 
 
 Ticker ticker;
