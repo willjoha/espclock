@@ -13,7 +13,7 @@
 #include "CClockDisplay.h"
 
 #include <ESP8266WiFi.h>          // ESP8266 board package
-#include <DNSServer.h>            // ESP8266 board package
+#include <ESP8266mDNS.h>          // ESP8266 board package
 
 #include <ESP8266WebServer.h>     // ESP8266 board package
 
@@ -22,6 +22,7 @@
 
 #include <Ticker.h>               // ESP8266 board package
 #include <LittleFS.h>             // ESP8266 board package
+#include <ArduinoOTA.h>
 
 
 Ticker ticker;
@@ -655,8 +656,10 @@ void setup()
 
 #ifdef SMALLCLOCK
   wifi_station_set_hostname("smallword");
+  ArduinoOTA.setHostname("smallword");
 #else
   wifi_station_set_hostname("bigword");
+  ArduinoOTA.setHostname("bigword");
 #endif
 
 	WiFiManager wifiManager;
@@ -720,6 +723,44 @@ void setup()
 	clockDisp.update(true);
 	updateBrightness();
 	FastLED.show();
+
+	// ArduinoOTA setup
+	ArduinoOTA.onStart([]() {
+        String type;
+        if (ArduinoOTA.getCommand() == U_FLASH) {
+            type = "sketch";
+        } else { // U_FS
+            type = "filesystem";
+        }
+
+        // NOTE: if updating FS this would be the place to unmount FS using FS.end()
+        Serial.println("Start updating " + type);
+    });
+
+    ArduinoOTA.onEnd([]() {
+        Serial.println("\nOTA End");
+    });
+
+    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+        Serial.printf("OTA Progress: %u%%\r", (progress / (total / 100)));
+    });
+
+    ArduinoOTA.onError([](ota_error_t error) {
+        Serial.printf("OTA Error[%u]: ", error);
+        if (error == OTA_AUTH_ERROR) {
+            Serial.println("Auth Failed");
+        } else if (error == OTA_BEGIN_ERROR) {
+            Serial.println("Begin Failed");
+        } else if (error == OTA_CONNECT_ERROR) {
+            Serial.println("Connect Failed");
+        } else if (error == OTA_RECEIVE_ERROR) {
+            Serial.println("Receive Failed");
+        } else if (error == OTA_END_ERROR) {
+            Serial.println("End Failed");
+        }
+    });
+
+    ArduinoOTA.begin();
  
 	// Start the Wifi server
 	server.begin();
@@ -738,6 +779,9 @@ void loop ()
 {
 	// reconnect WiFiManager, if needed
 	WiFiReconnect();
+
+	// Handle OTA
+	ArduinoOTA.handle();
 
 	if (timeSet != timeStatus())
 	{
