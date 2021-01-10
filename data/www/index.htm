@@ -1,0 +1,94 @@
+<html>
+<head>
+<title>Konfiguration WordClock</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+</head>
+<body style='font-family:verdana;background:#FBFBEF'>
+<script>
+function handleJson(jsonObj) {
+    document.getElementById("daystart").value = jsonObj["brightness"]["daystart"];
+    document.getElementById("dayend").value = jsonObj["brightness"]["dayend"];
+    document.getElementById("brightness_day").value = jsonObj["brightness"]["day"];
+    document.getElementById("brightness_day2").value = jsonObj["brightness"]["day"];
+    document.getElementById("brightness_night").value = jsonObj["brightness"]["night"];
+    document.getElementById("brightness_night2").value = jsonObj["brightness"]["night"];
+
+    document.getElementById("colorpicker").value = jsonObj["display"]["color"];
+    document.getElementById("correctionpicker").value = jsonObj["display"]["correction"];
+    document.getElementById("mode").value = jsonObj["display"]["mode"];
+    document.getElementById("dialect").value = jsonObj["display"]["dialect"];
+
+    document.getElementById("ntp_server").value = jsonObj["ntp"]["server"];
+}
+
+function ajax(method, url, params) {
+    var xhttp = new XMLHttpRequest();
+    xhttp.open(method, url, true);
+    xhttp.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+    xhttp.responseType = 'json';
+    xhttp.onreadystatechange = function() {
+        if (this.readyState == 4 && this.status == 200) {
+            handleJson(this.response);
+        }
+    };
+    xhttp.send(params);
+    }
+</script>
+<h1>Word Clock</h1>
+
+<h3>Helligkeit</h3>
+<table>
+<tr><td width='100'>Tageszeit</td>
+<td><input id="daystart" onchange="ajax('POST', '/brightness', 'daystart='+this.value)" value='%DAY_TIME%' type ='time' />&nbsp;-&nbsp;
+<input id="dayend" onchange="ajax('POST', '/brightness', 'dayend='+this.value)" value='%NIGHT_TIME%' type ='time'/>
+</td></tr>
+<tr><td width='100'>bei Tag</td>
+<td><input id="brightness_day" onchange="ajax('POST', '/brightness', 'day='+this.value)" value='%BRIGHTNESS_DAY%' min='0' max='255' type='range'>
+&nbsp;&nbsp;<input id="brightness_day2" onchange="ajax('POST', '/brightness', 'day='+this.value)" type="number" min="0" max="255" value="%BRIGHTNESS_DAY%"></td></tr>
+<tr><td width='100'>bei Nacht</td>
+<td><input id="brightness_night" onchange="ajax('POST', '/brightness', 'night='+this.value)" value='%BRIGHTNESS_NIGHT%' min='0' max='255' type='range'>
+&nbsp;&nbsp;<input id="brightness_night2" onchange="ajax('POST', '/brightness', 'night='+this.value)" type="number" min="0" max="255" value="%BRIGHTNESS_NIGHT%"></td></tr></table>
+
+<h3>Anzeige</h3>
+<table>
+<tr><td width='100'>Farbe</td><td><input type="color" id="colorpicker" onchange="ajax('POST', '/color', 'hexcolor=' + this.value)" value="%LEDCOLOR%"></td></tr>
+<tr><td width='100'>Korrektur</td><td><input type="color" id="correctionpicker" onchange="ajax('POST', '/color', 'correction=' + this.value)" value="%CORRECTION%"></td></tr>
+
+<tr><td width='100'>Modus</td><td>
+<select id="mode" name="ColorMode" onChange="ajax('POST', '/color', 'mode=' + this.options[this.selectedIndex].value)">
+<option value="0"%COLOR_MODE_SOLID%>Solid</option>
+<option value="4"%COLOR_MODE_GRADIENT%>Gradient</option>
+<option value="5"%COLOR_MODE_GLITTER% >Glitter</option>
+<option value="1"%COLOR_MODE_RAINBOW1%>Rainbow_1</option>
+<option value="2"%COLOR_MODE_RAINBOW2%>Rainbow_2</option>
+<option value="3"%COLOR_MODE_RAINBOW3%>Rainbow_3</option>
+</select>
+</td></tr>
+<tr><td width='100'>Dialekt</td>
+    <td>
+    <select id="dialect" name="WordMode" onChange="ajax('POST', '/dialect', 'value=' + this.options[this.selectedIndex].value)">
+    <option value="0" %DIALECT_BAYER_SELECTED%>Bayerisch</option>
+    <option value="1" %DIALECT_FRANK_SELECTED%>Fr&auml;nkisch</option>
+    <option value="2" %DIALECT_HOCH_SELECTED%>Hochdeutsch</option>
+    </select>
+    </td></tr>
+</table><br/>
+<button type='button' onclick="ajax('POST', '/config', 'save=true')">Speichern</button>
+
+<br/><br/>
+<h3>Info</h3>
+<table><tr><td width='100'>Zeitserver</td>
+<td>
+&nbsp;<input id='ntp_server' onchange="ajax('POST', '/ntp', 'server=' + this.value)" value='%NTP_SERVER%' type ='text' />&nbsp;
+<button type='button' onclick="ajax('POST', '/ntp', 'sync=true')">Sync</button>
+</td></tr>
+<tr><td width='100'>Sync</td><td>%NTP_LAST_SYNC%</td></tr>
+<tr><td width='100'>Software</td><td>%CLOCK_VERSION%</td></tr>
+<tr><td width='100'>LED Chipset</td><td>%LED_STRIPE%</td></tr>
+<tr><td width='100'>Clock size</td><td>%CLOCK_SIZE%</td></tr>
+<tr><td width='100'>SSID</td><td>%SSID%&nbsp;&nbsp;<button type = "button" onclick="ajax('POST', '/wifi', 'reset=true')">Reset WiFi</button></td></tr>
+<tr><td width='100'>Sketch info:</td><td>free %ESP_FREE_SKETCH_SPACE% (using %ESP_SKETCH_SIZE%)</td></tr></table>
+
+<button type = "button" onclick="ajax('GET', '/demo')">LED Demo</button><br/>
+<button type = "button" onclick="ajax('GET', '/restart')">Neustart</button><br/>
+</body></html>

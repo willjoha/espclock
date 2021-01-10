@@ -15,10 +15,11 @@
 #include <ESP8266WiFi.h>          // ESP8266 board package
 #include <ESP8266mDNS.h>          // ESP8266 board package
 
-#include <ESP8266WebServer.h>     // ESP8266 board package
-
 #include <WiFiManager.h>          // https://github.com/tzapu/WiFiManager v0.14.0
 #include <ArduinoJson.h>          // https://github.com/bblanchon/ArduinoJson v6.11.5
+
+#define WEBSERVER_H               // https://github.com/me-no-dev/ESPAsyncWebServer/issues/418#issuecomment-667976368
+#include <ESPAsyncWebServer.h>    // https://github.com/me-no-dev/ESPAsyncWebServer v1.2.3
 
 #include <Ticker.h>               // ESP8266 board package
 #include <LittleFS.h>             // ESP8266 board package
@@ -26,11 +27,7 @@
 
 
 Ticker ticker;
-WiFiServer server(80);
-
-
-unsigned long ulReqcount;
-
+AsyncWebServer server(80);
 
 /*
  * ------------------------------------------------------------------------------
@@ -38,30 +35,20 @@ unsigned long ulReqcount;
  * ------------------------------------------------------------------------------
  */
 
- // Number of LEDs used for the clock (11x10 + 4 minute LEDs + 4 spare LEDs)
-#ifdef SMALLCLOCK
-	#define NUM_LEDS 118
-#else
-#define NUM_LEDS 114
-#endif
-
-// initial values for first time run
-const int INIT_RED = 255;
-const int INIT_GREEN = 127;
-const int INIT_BLUE = 36;
-
-// choose your type of LED stripe controllers
-//#define STRIPE_SK9822
-#define STRIPE_APA102
-
 #define DATA_PIN 13
 #define CLOCK_PIN 14
 
-CRGB leds[NUM_LEDS];
-CRGB leds_target[NUM_LEDS];
-bool leds_fill[NUM_LEDS];
+CRGB leds[118];
+CRGB leds_target[118];
+bool leds_fill[118];
 
 uint8_t gHue = 0; // demo mode hue
+
+bool small_clock = true;
+uint8_t num_leds = 118;
+
+CRGB color_correction(160, 230, 255);
+ESPIChipsets chipset = APA102;
 
 /*
  * ------------------------------------------------------------------------------
@@ -72,8 +59,6 @@ uint8_t gHue = 0; // demo mode hue
 //The default values for the NTP server
 char ntp_server[50] = "0.de.pool.ntp.org";
 char clock_version[15] = __DATE__;
-bool bRestarted = true;
-
 
 /*
 * ------------------------------------------------------------------------------
@@ -99,10 +84,9 @@ WiFiEventHandler connectedEventHandler;
 
 uint8_t brightnessNight =  5;
 uint8_t brightnessDay   = 50;
-uint8_t brightness = brightnessDay;
 
-TimeElements DayTime;
-TimeElements NightTime;
+TimeElements DayTime = {0, 0, 6, 0, 0, 0, 0};
+TimeElements NightTime = {0, 0, 22, 0, 0, 0, 0};
 
 bool displayClock = true;  // as opposite to demo mode
 
@@ -118,19 +102,17 @@ Timezone CE(CEST, CET);
 CFadeAnimation ani;
 CClockDisplay clockDisp;
 
+
 bool updateBrightness()
 {
 	time_t local( CE.toLocal(now()) );
-	char clocal[6];
-
-	sprintf(clocal, "%02d:%02d", hour(local), minute(local));
 
 	if ((hour(local) * 60 + minute(local)) >= (NightTime.Hour * 60 + NightTime.Minute) 
 	||  (hour(local) * 60 + minute(local)) < (DayTime.Hour * 60 + DayTime.Minute))
 	{
 		if (FastLED.getBrightness() != brightnessNight)
 		{
-			Serial.println("Update Brighness: NIGHT");
+			Serial.println("Update Brightness: NIGHT");
 			FastLED.setBrightness(brightnessNight);
 			return true;
 		}
@@ -139,7 +121,7 @@ bool updateBrightness()
 	{
 		if (FastLED.getBrightness() != brightnessDay)
 		{
-			Serial.println("Update Brighness: DAY");
+			Serial.println("Update Brightness: DAY");
 			FastLED.setBrightness(brightnessDay);
 			return true;
 		}
@@ -147,36 +129,12 @@ bool updateBrightness()
 	return false;
 }
 
-void setDayStart(String sVal)
+TimeElements fromTimeString(String time)
 {
 	TimeElements tm;
-
-	String temp1 = sVal.substring(0, sVal.indexOf(":") );
-	String temp2 = sVal.substring(sVal.indexOf(":") + 1);
-
-	tm.Hour = temp1.toInt();
-	tm.Minute = temp2.toInt();
-
-	DayTime = tm;
-
-	Serial.print("DayStart=");
-	Serial.print(tm.Hour);
-	Serial.print(":");
-	Serial.println(tm.Minute);
-}
-
-void setNightStart(String sVal)
-{
-	TimeElements tm;
-	tm.Hour = sVal.substring(0, sVal.indexOf(":") ).toInt();
-	tm.Minute = sVal.substring(sVal.indexOf(":") + 1).toInt();
-
-	NightTime = tm;
-
-	Serial.print("NightStart=");
-	Serial.print(tm.Hour);
-	Serial.print(":");
-	Serial.println(tm.Minute);
+	tm.Hour = time.substring(0, time.indexOf(":") ).toInt();
+	tm.Minute = time.substring(time.indexOf(":") + 1).toInt();
+	return tm;
 }
 
 String getTimeString(TimeElements time)
@@ -189,6 +147,50 @@ String getTimeString(TimeElements time)
 	return sTime;
 }
 
+String getTimeString(time_t time)
+{
+	char cBuff[9];
+	sprintf(cBuff, "%02d:%02d:%02d", hour(time), minute(time), second(time));
+	return cBuff;
+}
+
+String getHexColor(const CRGB& color)
+{
+	char cBuff[8];
+	sprintf(cBuff, "#%02x%02x%02x", color.r, color.g, color.b);
+	return cBuff;
+}
+
+CRGB HtmlHexColor(const String& color)
+{
+	unsigned int r = 0;
+	unsigned int g = 0;
+	unsigned int b = 0;
+
+	if(color.length() == 7)
+	{
+		sscanf(color.c_str(), "#%02x%02x%02x", &r, &g, &b);
+	}
+	
+	return CRGB(r, g , b);
+}
+
+String toString(ESPIChipsets chipset)
+{
+	switch(chipset)
+	{
+		case LPD6803: return F("LPD6803"); break;
+		case LPD8806: return F("LPD8806"); break;
+		case WS2801: return F("WS2801"); break;
+		case WS2803: return F("WS2803"); break;
+		case SM16716: return F("SM16716"); break;
+		case P9813: return F("P9813"); break;
+		case APA102: return F("APA102"); break;
+		case SK9822: return F("SK9822"); break;
+		case DOTSTAR: return F("DOTSTAR"); break;
+	}
+	return F("UNKNOWN");
+}
 
 /*
  * ------------------------------------------------------------------------------
@@ -238,35 +240,10 @@ void cbTick()
 
 //------------------------------------------------------------------------------
 //WiFiManager callback:
-bool shouldSaveConfig = false;
-
-void cbSaveConfig()
-{
-	Serial.println("::cbSaveConfig(): Should save config");
-	shouldSaveConfig = true;
-}
-
 void cbConfigMode(WiFiManager *myWiFiManager)
 {
 	ticker.attach(0.2, cbTick);
 }
-
-
-void DemoMode()
-{
-	fill_solid(&(leds[0]), NUM_LEDS, CRGB::Black);
-	FastLED.show();
-
-	for (int i = 0; i < NUM_LEDS; i++)
-	{
-		leds[i] = CRGB::Red;
-		FastLED.show();
-		delay(300);
-		leds[i] = CRGB::Black;
-	}
-	delay(150);
-}
-
 
 /*
 * ------------------------------------------------------------------------------
@@ -275,78 +252,32 @@ void DemoMode()
 * NTPserver
 * ------------------------------------------------------------------------------
 */
+
+void serializeConfig(JsonDocument& doc)
+{
+	doc["display"]["color"] = getHexColor(clockDisp.getColor());
+	doc["display"]["correction"] = getHexColor(color_correction);
+	doc["display"]["mode"] = clockDisp.getColorMode();
+	doc["display"]["dialect"] = clockDisp.getDialekt();
+
+	doc["brightness"]["daystart"] = getTimeString(DayTime);
+	doc["brightness"]["dayend"] = getTimeString(NightTime);
+	doc["brightness"]["day"] = brightnessDay;
+	doc["brightness"]["night"] = brightnessNight;
+
+	doc["ntp"]["server"] = ntp_server;
+
+	doc["clock"]["chipset"] = chipset;
+	doc["clock"]["small"] = small_clock;
+}
+
 void writeSettings()
 {
 	Serial.println("writing config");
 
-	StaticJsonDocument<250> jsonBuffer;
+	StaticJsonDocument<1024> jsonBuffer;
 
-	CRGB ledcolor;
-	ledcolor = clockDisp.getColor();
-
-	// colors
-	jsonBuffer["red"] = ledcolor.r;
-	jsonBuffer["green"] = ledcolor.g;
-	jsonBuffer["blue"] = ledcolor.b;
-
-	// ntp server
-	jsonBuffer["ntp_server"] = ntp_server;
-
-	// brightness
-	jsonBuffer["day"] = brightnessDay;
-	jsonBuffer["night"] = brightnessNight;
-
-	// day-night switch for brightness
-	jsonBuffer["DayH"] = DayTime.Hour;
-	jsonBuffer["DayM"] = DayTime.Minute;
-	jsonBuffer["NigH"] = NightTime.Hour;
-	jsonBuffer["NigM"] = NightTime.Minute;
-
-
-	// word schema
-	if (CClockDisplay::e_Bayerisch == clockDisp.getDialekt())
-	{
-		jsonBuffer["Words"] = "bay";
-	}
-	else if (CClockDisplay::e_Frankisch == clockDisp.getDialekt())
-	{
-		jsonBuffer["Words"] = "fra";
-	}
-	else if (CClockDisplay::e_Hochdeutsch == clockDisp.getDialekt())
-	{
-		jsonBuffer["Words"] = "hoc";
-	}
-	else
-	{
-		jsonBuffer["Words"] = "bay";
-	}
-
-
-	// ColorMode
-	if (CClockDisplay::e_ModeGlitter == clockDisp.getColorMode())
-	{
-		jsonBuffer["ColMo"] = "glit";
-	}
-	else if (CClockDisplay::e_ModeGradient == clockDisp.getColorMode())
-	{
-		jsonBuffer["ColMo"] = "grad";
-	}
-	else if (CClockDisplay::e_ModeRainbow_1 == clockDisp.getColorMode())
-	{
-		jsonBuffer["ColMo"] = "rain1";
-	}
-	else if (CClockDisplay::e_ModeRainbow_2 == clockDisp.getColorMode())
-	{
-		jsonBuffer["ColMo"] = "rain2";
-	}
-	else if (CClockDisplay::e_ModeRainbow_3 == clockDisp.getColorMode())
-	{
-		jsonBuffer["ColMo"] = "rain3";
-	}
-	else
-	{
-		jsonBuffer["ColMo"] = "sol";
-	}
+	serializeConfig(jsonBuffer);
 
 	File configFile = LittleFS.open("/config.json", "w");
 	if ( !configFile )
@@ -362,6 +293,40 @@ void writeSettings()
 	Serial.println("done saving");
 }
 
+void deserializeConfig(JsonDocument& doc)
+{
+	clockDisp.setColor(HtmlHexColor(doc["display"]["color"]));
+	color_correction = HtmlHexColor(doc["display"]["correction"]);
+	clockDisp.setColorMode((CClockDisplay::eColorMode) doc["display"]["mode"]);
+	clockDisp.setDialekt((CClockDisplay::eDialekt) doc["display"]["dialect"]);
+
+	DayTime = fromTimeString(doc["brightness"]["daystart"]);
+	NightTime = fromTimeString(doc["brightness"]["dayend"]);
+	brightnessDay = doc["brightness"]["day"];
+	brightnessNight = doc["brightness"]["night"];
+
+	strcpy(ntp_server, doc["ntp"]["server"]);
+
+	chipset = doc["clock"]["chipset"];
+	small_clock = doc["clock"]["small"];
+}
+
+void printConfig()
+{
+	Serial.println("Configuration:");
+	Serial.printf("  Color:            %s\n", getHexColor(clockDisp.getColor()).c_str());
+	Serial.printf("  Correction:       %s\n", getHexColor(color_correction).c_str());
+	Serial.printf("  Mode:             %d\n", clockDisp.getColorMode());
+	Serial.printf("  Dialect:          %d\n", clockDisp.getDialekt());
+	Serial.printf("  Day start:        %s\n", getTimeString(DayTime).c_str());
+	Serial.printf("  Day end:          %s\n", getTimeString(NightTime).c_str());
+	Serial.printf("  Brightness Day:   %d\n", brightnessDay);
+	Serial.printf("  Brightness Night: %d\n", brightnessNight);
+	Serial.printf("  NTP server:       %s\n", ntp_server);
+	Serial.printf("  LED Chipset:      %s\n", toString(chipset).c_str());
+	Serial.printf("  Clock size:       %s\n", small_clock ? "small" : "big");
+	return;
+}
 
 void readSettings()
 {
@@ -388,7 +353,7 @@ void readSettings()
 
 				configFile.readBytes(buf.get(), size);
 
-				StaticJsonDocument<250> json;
+				StaticJsonDocument<1024> json;
 				auto error = deserializeJson(json, buf.get());
 				if (error)
 				{
@@ -398,133 +363,12 @@ void readSettings()
 
 				configFile.close();
 
-				serializeJson(json, Serial);
+				serializeJsonPretty(json, Serial);
 				Serial.println();
 
-				// brightness settings
-				if (json["day"])
-					brightnessDay = int(json["day"]);
+				deserializeConfig(json);
 
-				if (json["night"])
-					brightnessNight = int(json["night"]);
-
-				brightness = brightnessDay;
-
-				Serial.print("INIT: brightness=");
-				Serial.print(brightnessDay);
-				Serial.print("/");
-				Serial.println(brightnessNight);
-
-				// color settings
-				CRGB ledcolor;
-				if (json["red"])
-					ledcolor.r = int(json["red"]);
-				if (json["green"])
-					ledcolor.g = int(json["green"]);
-				if (json["blue"])
-					ledcolor.b = int(json["blue"]);
-
-				Serial.print("INIT: color=");
-				Serial.print(ledcolor.r);
-				Serial.print("/");
-				Serial.print(ledcolor.g);
-				Serial.print("/");
-				Serial.println(ledcolor.b);
-
-				clockDisp.setColor(ledcolor);
-
-				// day-night switch for brightness
-				if (json["DayH"]) 
-					DayTime.Hour = int(json["DayH"]);
-				if (json["DayM"])
-					DayTime.Minute = int(json["DayM"]);
-				if (json["NigH"])
-					NightTime.Hour = int(json["NigH"]);
-				if (json["NigM"])
-					NightTime.Minute = int(json["NigM"]);
-
-				Serial.print("INIT: Day-Night=");
-				Serial.print(getTimeString(DayTime));
-				Serial.print("-");
-				Serial.println(getTimeString(NightTime));
-
-				if (json["ntp_server"])
-					strcpy(ntp_server, json["ntp_server"]);
-
-				Serial.print("INIT: NTP=");
-				Serial.println(ntp_server);
-
-				// ColorMode
-				String colMode = json["ColMo"];
-				if (colMode.length() > 0)
-				{
-					if (colMode.equals("glit") )
-					{
-						clockDisp.setColorMode(CClockDisplay::e_ModeGlitter);
-						Serial.println("INIT: colormode=glitter");
-					}
-					else if (colMode.equals("grad"))
-					{
-						clockDisp.setColorMode(CClockDisplay::e_ModeGradient);
-						Serial.println("INIT: coloparsedrmode=gradient");
-					}
-					else if (colMode.equals("rain1"))
-					{
-						clockDisp.setColorMode(CClockDisplay::e_ModeRainbow_1);
-						Serial.println("INIT: colormode=rainbow1");
-					}
-					else if (colMode.equals("rain2"))
-					{
-						clockDisp.setColorMode(CClockDisplay::e_ModeRainbow_2);
-						Serial.println("INIT: colormode=rainbow2");
-					}
-					else if (colMode.equals("rain3"))
-					{
-						clockDisp.setColorMode(CClockDisplay::e_ModeRainbow_3);
-						Serial.println("INIT: colormode=rainbow3");
-					}
-					else
-					{
-						clockDisp.setColorMode(CClockDisplay::e_ModeSolid);
-						Serial.println("INIT: colormode=solid (default_1)");
-					}
-				}
-				else
-				{
-					clockDisp.setColorMode(CClockDisplay::e_ModeSolid);
-					Serial.println("INIT: default colormode=solid (default_2)");
-				}
-
-				// Word schema
-				String colSchema = json["Words"];
-				if (colSchema.length() > 0)
-				{
-					if (colSchema.equals("bay"))
-					{
-						clockDisp.setDialekt(CClockDisplay::e_Bayerisch);
-						Serial.println("INIT: words=BAYERISCH");
-					}
-					else if (colSchema.equals("fra"))
-					{
-						clockDisp.setDialekt(CClockDisplay::e_Frankisch);
-						Serial.println("INIT: words=FRAENKISCH");
-					}
-					else if (colSchema.equals("hoc"))
-					{
-						clockDisp.setDialekt(CClockDisplay::e_Hochdeutsch);
-						Serial.println("INIT: words=HOCHDEUTSCH");
-					}
-					else
-					{
-						clockDisp.setDialekt(CClockDisplay::e_Bayerisch);
-						Serial.println("INIT: words=BAYERISCH (default 1)");
-					}
-				}
-				else
-				{
-					clockDisp.setDialekt(CClockDisplay::e_Bayerisch);
-					Serial.println("INIT: words=BAYERISCH (default 2)");
-				}
+				printConfig();
 			}
 			else
 			{
@@ -544,43 +388,15 @@ void readSettings()
 
 }
 
-void setDefaults()
-{
-	brightnessDay = 250;
-	brightnessNight = 150;
-	brightness = brightnessDay;
-
-	CRGB ledcolor;
-	ledcolor.r = INIT_RED;
-	ledcolor.g = INIT_GREEN;
-	ledcolor.b = INIT_BLUE;
-
-	setDayStart("06:00");
-	setNightStart("22:00");
-	
-	clockDisp.setColorMode(CClockDisplay::e_ModeSolid);
-	clockDisp.setDialekt(CClockDisplay::e_Bayerisch);
-}
-
 void SetNewNtp(const char* ntp)
 {
 	strcpy(ntp_server, ntp);
 
 	IPAddress timeServerIP;
 	WiFi.hostByName(ntp_server, timeServerIP);
-
-	Serial.print("NTP Server: ");
-	Serial.print(ntp_server);
-	Serial.print(" - ");
-	Serial.println(timeServerIP);
-
-	// Rtc.setup();
-	Serial.println("Reinitializing RTC");
-
+	Serial.printf("NTP Server: %s - %s\n", ntp_server, timeServerIP.toString().c_str());
 	Ntp.setup(timeServerIP);
-	Rtc.setSyncProvider(&Ntp);
-	
-	setSyncProvider(getDateTimeFromRTC);
+	return;
 }
 
 
@@ -616,7 +432,77 @@ void onWiFiConnected(const WiFiEventStationModeConnected& event)
 	eWiFiConnState = eWifiState::e_reconnect_needed;
 }
 
+String processor(const String& var)
+{
+	if(var == F("BRIGHTNESS_DAY"))
+	    return String(brightnessDay);
+	if(var == F("BRIGHTNESS_NIGHT"))
+	    return String(brightnessNight);
+	if(var == F("DAY_TIME"))
+	    return getTimeString(DayTime);
+	if(var == F("NIGHT_TIME"))
+	    return getTimeString(NightTime);
+	if(var == F("LEDCOLOR_R"))
+	    return String(clockDisp.getColor().r);
+	if(var == F("LEDCOLOR_G"))
+	    return String(clockDisp.getColor().g);
+	if(var == F("LEDCOLOR_B"))
+	    return String(clockDisp.getColor().b);
+	if(var == F("LEDCOLOR"))
+	    return getHexColor(clockDisp.getColor());
+	if(var == F("CORRECTION"))
+	    return getHexColor(color_correction);
+	if(var == F("LED_STRIPE"))
+	{
+		return toString(chipset);
+	}
+	if(var == F("NTP_SERVER"))
+	    return ntp_server;
+	if(var == F("NTP_LAST_SYNC"))
+	{
+		time_t lastSync (CE.toLocal(Ntp.getLastSync()));
+		return getTimeString(lastSync);
+	}
+	if(var == F("ESP_FREE_SKETCH_SPACE"))
+	    return String(ESP.getFreeSketchSpace());
+	if(var == F("ESP_SKETCH_SIZE"))
+	    return String(ESP.getSketchSize());
+	if(var == F("CLOCK_VERSION"))
+		return clock_version;
+	if(var == F("DIALECT_BAYER_SELECTED"))
+	    return (clockDisp.getDialekt() == CClockDisplay::e_Bayerisch) ? " selected" : "";
+	if(var == F("DIALECT_FRANK_SELECTED"))
+	    return (clockDisp.getDialekt() == CClockDisplay::e_Frankisch) ? " selected" : "";
+	if(var == F("DIALECT_HOCH_SELECTED"))
+	    return (clockDisp.getDialekt() == CClockDisplay::e_Hochdeutsch) ? " selected" : "";
+	if(var == F("COLOR_MODE_SOLID"))
+		return (clockDisp.getColorMode() == CClockDisplay::e_ModeSolid) ? " selected" : "";
+	if(var == F("COLOR_MODE_GRADIENT"))
+		return (clockDisp.getColorMode() == CClockDisplay::e_ModeGradient) ? " selected" : "";
+	if(var == F("COLOR_MODE_GLITTER"))
+		return (clockDisp.getColorMode() == CClockDisplay::e_ModeGlitter) ? " selected" : "";
+	if(var == F("COLOR_MODE_RAINBOW1"))
+		return (clockDisp.getColorMode() == CClockDisplay::e_ModeRainbow_1) ? " selected" : "";
+	if(var == F("COLOR_MODE_RAINBOW2"))
+		return (clockDisp.getColorMode() == CClockDisplay::e_ModeRainbow_2) ? " selected" : "";
+	if(var == F("COLOR_MODE_RAINBOW3"))
+		return (clockDisp.getColorMode() == CClockDisplay::e_ModeRainbow_3) ? " selected" : "";
+	if(var == F("SSID"))
+		return (WiFi.SSID());
+	if(var == F("CLOCK_SIZE"))
+	    return (small_clock ? F("SMALL") : F("BIG"));
+	return var;
+}
 
+void sendJsonResponse(AsyncWebServerRequest* request)
+{
+	AsyncResponseStream * response = request->beginResponseStream("application/json");
+	StaticJsonDocument<1024> jsonBuffer;
+	serializeConfig(jsonBuffer);
+	serializeJson(jsonBuffer, *response);
+	request->send(response);
+	return;
+}
 
 /*
 * ------------------------------------------------------------------------------
@@ -631,46 +517,40 @@ void setup()
 	Serial.print(__DATE__);
 	Serial.println(__TIME__);
 
-	bRestarted = true;
-
-	// init LEDs
-#ifdef STRIPE_APA102
-	Serial.println("init LED stripe APA102...");
-	FastLED.addLeds<APA102, DATA_PIN, CLOCK_PIN, BGR>(leds, NUM_LEDS);
-#endif
-#ifdef STRIPE_SK9822
-	Serial.println("init LED stripe SK9822...");
-	FastLED.addLeds<SK9822, DATA_PIN, CLOCK_PIN, BGR, DATA_RATE_MHZ(12)>(leds, NUM_LEDS);
-#endif
-
-	clockDisp.setup( &(leds_target[0]), &(leds_fill[0]), NUM_LEDS);
-	clockDisp.setTimezone(&CE);
-
-	setDefaults();
 	readSettings();
 
-	fill_solid( &(leds[0]), NUM_LEDS, CRGB::Black);
+	// init LEDs
+	if(small_clock)
+	{
+		num_leds = 118;
+	} else {
+		num_leds = 114;
+	}
+
+	Serial.print("init LED stripe ");
+	Serial.println(toString(chipset));
+	switch(chipset)
+	{
+		case APA102:
+			FastLED.addLeds<APA102, DATA_PIN, CLOCK_PIN, BGR>(leds, num_leds);
+			break;
+		case SK9822:
+			FastLED.addLeds<SK9822, DATA_PIN, CLOCK_PIN, BGR, DATA_RATE_MHZ(12)>(leds, num_leds);
+			break;
+	}
+
+    clockDisp.setup( &(leds_target[0]), &(leds_fill[0]), num_leds);
+	clockDisp.isSmallClock(small_clock);
+	clockDisp.setTimezone(&CE);
+
+	FastLED.setCorrection(color_correction);
+	fill_solid( &(leds[0]), num_leds, CRGB::Black);
 	FastLED.show();
 
 	ticker.attach(0.6, cbTick);
 
-#ifdef SMALLCLOCK
-  wifi_station_set_hostname("smallword");
-  ArduinoOTA.setHostname("smallword");
-#else
-  wifi_station_set_hostname("bigword");
-  ArduinoOTA.setHostname("bigword");
-#endif
-
 	WiFiManager wifiManager;
 	wifiManager.setAPCallback(cbConfigMode);
-	wifiManager.setSaveConfigCallback(cbSaveConfig);
-
-	WiFiManagerParameter custom_ntp_server("server", "NTP server", ntp_server, 50);
-	wifiManager.addParameter(&custom_ntp_server);
-
-	//reset settings - for testing
-	//wifiManager.resetSettings();
 
 	if (!wifiManager.autoConnect("WordClock")) 
 	{
@@ -691,15 +571,6 @@ void setup()
 	disconnectedEventHandler = WiFi.onStationModeDisconnected(&onWiFiDisconnected);
 	connectedEventHandler    = WiFi.onStationModeConnected(&onWiFiConnected);
 
-	//read updated parameters
-	strcpy(ntp_server, custom_ntp_server.getValue());
-
-	//save the custom parameters to FS
-	if (shouldSaveConfig) 
-	{
-		writeSettings();
-	}
-  
 	Serial.print("IP number assigned by DHCP is ");
 	Serial.println(WiFi.localIP());
 
@@ -708,15 +579,8 @@ void setup()
 
 	Wire.begin(0, 2); // due to limited pins, use pin 0 and 2 for SDA, SCL
 
-	IPAddress timeServerIP;
-	WiFi.hostByName(ntp_server, timeServerIP);
-	Serial.print("NTP Server: ");
-	Serial.print(ntp_server);
-	Serial.print(" - ");
-	Serial.println(timeServerIP);
-
 	Rtc.setup();
-	Ntp.setup(timeServerIP);
+	SetNewNtp(ntp_server);
 	Rtc.setSyncProvider(&Ntp);
 	setSyncProvider(getDateTimeFromRTC);
  
@@ -734,6 +598,7 @@ void setup()
         }
 
         // NOTE: if updating FS this would be the place to unmount FS using FS.end()
+		LittleFS.end();
         Serial.println("Start updating " + type);
     });
 
@@ -762,13 +627,147 @@ void setup()
 
     ArduinoOTA.begin();
  
-	// Start the Wifi server
+	// Start the Web server
+	server.on("/ntp", [](AsyncWebServerRequest *request){
+		if(request->hasParam("server", true))
+		{
+			Serial.println("POST Request");
+		    AsyncWebParameter* p = request->getParam("server", true);
+			strcpy(ntp_server, p->value().c_str());
+		}
+		if(request->hasParam("sync", true))
+		{
+			time_t tTime = Ntp.now();
+			if (tTime == 0)
+			{
+				delay(1000);
+				Ntp.now();
+			}
+		}
+		sendJsonResponse(request);
+	});
+	server.on("/demo", [](AsyncWebServerRequest *request){
+		displayClock = !displayClock;
+		sendJsonResponse(request);
+	});
+	server.on("/dialect", [](AsyncWebServerRequest *request){
+		if(request->hasParam("value", true))
+		{
+			AsyncWebParameter* p = request->getParam("value", true);
+			clockDisp.setDialekt((CClockDisplay::eDialekt)p->value().toInt());
+			clockDisp.update(true);
+		}
+		sendJsonResponse(request);
+	});
+	server.on("/brightness", [](AsyncWebServerRequest *request){
+		if(request->hasParam("daystart", true))
+		{
+			AsyncWebParameter* p = request->getParam("daystart", true);
+			DayTime = fromTimeString(p->value());
+			updateBrightness();
+			clockDisp.update(true);
+		}
+		if(request->hasParam("dayend", true))
+		{
+			AsyncWebParameter* p = request->getParam("dayend", true);
+			NightTime = fromTimeString(p->value());
+			updateBrightness();
+			clockDisp.update(true);
+		}
+		if(request->hasParam("day", true))
+		{
+			AsyncWebParameter* p = request->getParam("day", true);
+			brightnessDay = p->value().toInt();
+			updateBrightness();
+			clockDisp.update(true);
+		}
+		if(request->hasParam("night", true))
+		{
+			AsyncWebParameter* p = request->getParam("night", true);
+			brightnessNight = p->value().toInt();
+			updateBrightness();
+			clockDisp.update(true);
+		}
+		sendJsonResponse(request);
+	});
+	server.on("/color", [](AsyncWebServerRequest *request){
+		if(request->hasParam("hexcolor", true))
+		{
+			AsyncWebParameter* p = request->getParam("hexcolor", true);
+			clockDisp.setColor(HtmlHexColor(p->value()));
+			clockDisp.update(true);
+		}
+		if(request->hasParam("correction", true))
+		{
+			AsyncWebParameter* p = request->getParam("correction", true);
+			color_correction = HtmlHexColor(p->value());
+			FastLED.setCorrection(color_correction);
+			clockDisp.update(true);
+		}
+		if(request->hasParam("mode", true))
+		{
+			AsyncWebParameter* p = request->getParam("mode", true);
+			clockDisp.setColorMode((CClockDisplay::eColorMode) p->value().toInt());
+			clockDisp.update(true);
+		}
+		sendJsonResponse(request);
+	});
+	server.on("/config", [](AsyncWebServerRequest *request){
+		if(request->hasParam("save", true))
+		{
+			AsyncWebParameter* p = request->getParam("save", true);
+			if(p->value() == "true")
+				writeSettings();
+		}
+		request->send(LittleFS, "/config.json", "application/json");
+	});
+	server.on("/restart", [](AsyncWebServerRequest *request){
+        request->send(200);
+		ESP.restart();
+	});
+	server.on("/wifi", [](AsyncWebServerRequest *request){
+		if(request->hasParam("reset", true))
+		{
+			AsyncWebParameter* p = request->getParam("reset", true);
+			if(p->value() == "true")
+			{
+				request->send(200);
+				WiFiManager wifiManager;
+  				wifiManager.resetSettings();
+				ESP.restart();
+			}
+		}
+		request->send(200);
+	});
+	server.serveStatic("/", LittleFS, "/www/").setTemplateProcessor(processor);
+	server.serveStatic("/config.json", LittleFS, "/config.json");
+	server.onNotFound([](AsyncWebServerRequest *request){
+		request->send(404);
+	});
 	server.begin();
 	Serial.println("Webserver - server started");
 
 	ticker.detach();
 }
 
+void demo()
+{
+	FastLED.setBrightness(brightnessDay);
+
+	// CONFETTI: random colored speckles that blink in and fade smoothly
+	fadeToBlackBy(leds, num_leds, 10);
+	int pos = random16(num_leds);
+	leds[pos] += CHSV(gHue + random8(64), 200, 255);
+
+	FastLED.show();
+
+	// insert a delay to keep the framerate modest
+	FastLED.delay(1000 / 120);
+
+	// do some periodic updates
+	EVERY_N_MILLISECONDS(20) { gHue++; } // slowly cycle the "base color" through the rainbow
+	return;
+}
 
 /*
 * ------------------------------------------------------------------------------
@@ -796,482 +795,20 @@ void loop ()
 		if (clockDisp.getColorMode() == CClockDisplay::e_ModeGlitter)
 		{
 			bChanged = clockDisp.update(true);
-			ani.transform2(leds, leds_target, NUM_LEDS);
+			ani.transform2(leds, leds_target, num_leds);
 		}
 		else
 		{
 			bChanged = clockDisp.update();
-			ani.transform(leds, leds_target, NUM_LEDS, bChanged);
+			ani.transform(leds, leds_target, num_leds, bChanged);
 		}
 
 		FastLED.show();
 	}
 	else
 	{
-		FastLED.setBrightness(brightnessDay);
-
-		// CONFETTI: random colored speckles that blink in and fade smoothly
-		fadeToBlackBy(leds, NUM_LEDS, 10);
-		int pos = random16(NUM_LEDS);
-		leds[pos] += CHSV(gHue + random8(64), 200, 255);
-
-		FastLED.show();
-
-		// insert a delay to keep the framerate modest
-		FastLED.delay(1000 / 120);
-
-		// do some periodic updates
-		EVERY_N_MILLISECONDS(20) { gHue++; } // slowly cycle the "base color" through the rainbow
+		demo();
 	}
 
-	////////////////////////////////////////////////////////////////////////////
-	// webserver implementation
-	////////////////////////////////////////////////////////////////////////////
-	WiFiClient client = server.available();
-	if (!client)
-	{
-		return;
-	}
-
-	// Wait until the client sends some data
-	Serial.println("Webserver - new client");
-	unsigned long ultimeout = millis() + 250;
-	while (!client.available() && (millis()<ultimeout))
-	{
-		delay(1);
-	}
-	if (millis()>ultimeout)
-	{
-		Serial.println("Webserver - client connection time-out!");
-		return;
-	}
-
-	// Read the first line of the request
-	String sRequest = client.readStringUntil('\r');
-	//Serial.println(sRequest);
-	client.flush();
-
-	// stop client, if request is empty
-	if (sRequest == "")
-	{
-		Serial.println("Webserver - empty request! - stopping client");
-		client.stop();
-		return;
-	}
-
-	// get path; end of path is either space or ?
-	// Syntax is e.g. GET /?pin=MOTOR1STOP HTTP/1.1
-	String sPath = "", sParam = "", sCmd = "";
-	String sGetstart = "GET ";
-	int iStart, iEndSpace, iEndQuest;
-	iStart = sRequest.indexOf(sGetstart);
-	if (iStart >= 0)
-	{
-		iStart += +sGetstart.length();
-		iEndSpace = sRequest.indexOf(" ", iStart);
-		iEndQuest = sRequest.indexOf("?", iStart);
-
-		// are there parameters?
-		if (iEndSpace>0)
-		{
-			if (iEndQuest>0)
-			{
-				// there are parameters
-				sPath = sRequest.substring(iStart, iEndQuest);
-				sParam = sRequest.substring(iEndQuest, iEndSpace);
-			}
-			else
-			{
-				// NO parameters
-				sPath = sRequest.substring(iStart, iEndSpace);
-			}
-		}
-	}
-
-	///////////////////////////////////////////////////////////////////////////////
-	// output parameters to serial, you may connect e.g. an Arduino and react on it
-	if (sParam.length()>0)
-	{
-		int iEqu = sParam.indexOf("?");
-		if (iEqu >= 0)
-		{
-			sCmd = sParam.substring(iEqu + 1, sParam.length());
-			Serial.print("CMD:");
-			Serial.println(sCmd);
-		}
-	}
-
-
-	// format the html response
-	String sResponse, sResponse2, sResponse3, sHeader;
-	if (sPath != "/")
-	{
-		// 404 for non-matching path
-		sResponse = "<html><head><title>404 Not Found</title></head><body><h1>Not Found</h1><p>The requested URL was not found on this server.</p></body></html>";
-
-		sHeader = "HTTP/1.1 404 Not found\r\n";
-		sHeader += "Content-Length: ";
-		sHeader += sResponse.length();
-		sHeader += "\r\n";
-		sHeader += "Content-Type: text/html\r\n";
-		sHeader += "Connection: close\r\n";
-		sHeader += "\r\n";
-	}
-	else
-	{
-		// format the html page
-
-		// react on parameters
-		if (sCmd.length() > 0)
-		{
-			int iEqu = sParam.indexOf("=");
-			int iVal = 0;
-			String sVal;
-			if (iEqu >= 0)
-			{
-				sVal = sParam.substring(iEqu + 1, sParam.length());
-				iVal = sVal.toInt();
-			}
-
-			// switch GPIO
-			if (sCmd.indexOf("DEMO") >= 0)
-			{
-				displayClock = !displayClock;
-			}
-			else if (sCmd.indexOf("RESTART") >= 0 && !bRestarted)
-			{
-				ESP.restart();
-			}
-			else if (sCmd.indexOf("DAYSHIFT") >= 0)
-			{
-				setDayStart(sVal);
-			}
-			else if (sCmd.indexOf("NIGHTSHIFT") >= 0)
-			{
-				setNightStart(sVal);
-			}
-			else if (sCmd.indexOf("RED") >= 0)
-			{
-				CRGB ledcolor;
-				ledcolor = clockDisp.getColor();
-				if (sVal.equals("PLUS"))
-				{
-					ledcolor.r = (ledcolor.r < 255) ? ledcolor.r + 1 : 255;
-				}
-				else if (sVal.startsWith("MIN"))
-				{
-					ledcolor.r = (ledcolor.r > 0) ? ledcolor.r - 1 : 0;
-				}
-				else
-				{
-					ledcolor.r = iVal;
-				}
-
-				clockDisp.setColor(ledcolor);
-				clockDisp.update(true);
-			}
-			else if (sCmd.indexOf("GREEN") >= 0)
-			{
-				CRGB ledcolor;
-				ledcolor = clockDisp.getColor();
-				if (sVal.equals("PLUS"))
-				{
-					ledcolor.g = (ledcolor.g < 255) ? ledcolor.g + 1 : 255;
-				}
-				else if (sVal.startsWith("MIN"))
-				{
-					ledcolor.g = (ledcolor.g > 0) ? ledcolor.g - 1 : 0;
-				}
-				else
-				{
-					ledcolor.g = iVal;
-				}
-
-				clockDisp.setColor(ledcolor);
-				clockDisp.update(true);
-			}
-			else if (sCmd.indexOf("BLUE") >= 0)
-			{
-				CRGB ledcolor;
-				ledcolor = clockDisp.getColor();
-				if (sVal.equals("PLUS"))
-				{
-					ledcolor.b = (ledcolor.b < 255) ? ledcolor.b + 1 : 255;
-				}
-				else if (sVal.startsWith("MIN"))
-				{
-					ledcolor.b = (ledcolor.b > 0) ? ledcolor.b - 1 : 0;
-				}
-				else
-				{
-					ledcolor.b = iVal;
-				}
-				clockDisp.setColor(ledcolor);
-				clockDisp.update(true);
-			}
-			else if (sCmd.indexOf("DAY") >= 0)
-			{
-				if (sVal.equals("PLUS"))
-				{
-					brightnessDay = (brightnessDay < 255) ? brightnessDay + 1 : 255;
-				}
-				else if (sVal.startsWith("MIN"))
-				{
-					brightnessDay = (brightnessDay > 0) ? brightnessDay - 1 : 0;
-				}
-				else
-				{
-					brightnessDay = iVal;
-				}
-				updateBrightness();
-			}
-			else if (sCmd.indexOf("NIGHT") >= 0)
-			{
-				if (sVal.equals("PLUS"))
-				{
-					brightnessNight = (brightnessNight < 255) ? brightnessNight + 1 : 255;
-				}
-				else if (sVal.startsWith("MIN"))
-				{
-					brightnessNight = (brightnessNight > 0) ? brightnessNight - 1 : 0;
-				}
-				else
-				{
-					brightnessNight = iVal;
-				}
-				updateBrightness();
-			}
-			else if (sCmd.indexOf("SYNC") >= 0)
-			{
-				time_t tTime = Ntp.now();
-				if (tTime == 0)
-				{
-					delay(1000);
-					Ntp.now();
-				}
-			}
-			else if (sCmd.indexOf("COLORMODE") >= 0)
-			{
-				if (sVal.equals("SOLID"))
-				{
-					clockDisp.setColorMode(clockDisp.e_ModeSolid);
-				}
-				else if (sVal.equals("GRADIENT"))
-				{
-					clockDisp.setColorMode(clockDisp.e_ModeGradient);
-				}
-				else if (sVal.equals("GLITTER"))
-				{
-					clockDisp.setColorMode(clockDisp.e_ModeGlitter);
-				}
-				else if (sVal.equals("RAINBOW1"))
-				{
-					clockDisp.setColorMode(clockDisp.e_ModeRainbow_1);
-				}
-				else if (sVal.equals("RAINBOW2"))
-				{
-					clockDisp.setColorMode(clockDisp.e_ModeRainbow_2);
-				}
-				else if (sVal.equals("RAINBOW3"))
-				{
-					clockDisp.setColorMode(clockDisp.e_ModeRainbow_3);
-				}
-			}
-			else if (sCmd.indexOf("DIALEKT") >= 0)
-			{
-				if (sVal.equals("BAYER"))
-				{
-					clockDisp.setDialekt(clockDisp.e_Bayerisch);
-				}
-				else if (sVal.equals("FRANK"))
-				{
-					clockDisp.setDialekt(clockDisp.e_Frankisch);
-				}
-				else if (sVal.equals("HOCH"))
-				{
-					clockDisp.setDialekt(clockDisp.e_Hochdeutsch);
-				}
-			}
-			else if (sCmd.indexOf("HUEDELTA") >= 0)
-			{
-				//clockDisp.setHueDelta(iVal);
-			}
-			else if (sCmd.indexOf("HUEINIT") >= 0)
-			{
-				//clockDisp.setHueInitial(iVal);
-			}
-			else if (sCmd.indexOf("HUEMOVE") >= 0)
-			{
-				//clockDisp.setHueMove((bool) iVal);
-			}
-			else if (sCmd.indexOf("SAVE") >= 0)
-			{
-				writeSettings();
-			}
-			clockDisp.update(true);
-		}
-
-		CRGB ledcolor;
-		ledcolor = clockDisp.getColor();
-
-		sResponse = "<html>\r\n<head>\r\n<title>Konfiguration WordClock</title>\r\n";
-		sResponse += "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=yes\">\r\n";
-		sResponse += "</head>\r\n<body style='font-family:verdana;background:#FBFBEF'>\r\n";
-		sResponse += "<h1>Word Clock</h1>\r\n";
-
-		sResponse += "<h3>Wort Schema</h3>\r\n";
-		sResponse += "<table>\r\n";
-		sResponse += "<tr><td width='100'>Modus</td>\r\n<td>\r\n";
-		sResponse += "<select name=\"WordMode\" onChange=\"window.location.href='?DIALEKT=' + this.options[this.selectedIndex].value\">\r\n";
-		sResponse += "<option value=\"BAYER\"";
-		sResponse += (clockDisp.getDialekt() == CClockDisplay::e_Bayerisch) ? " selected" : "";
-		sResponse += " >Bayerisch</option>\r\n";
-		sResponse += "<option value=\"FRANK\"";
-		sResponse += (clockDisp.getDialekt() == CClockDisplay::e_Frankisch) ? " selected" : "";
-		sResponse += " >Fr&auml;nkisch</option>\r\n";
-		sResponse += "<option value=\"HOCH\"";
-		sResponse += (clockDisp.getDialekt() == CClockDisplay::e_Hochdeutsch) ? " selected" : "";
-		sResponse += " >Hochdeutsch</option>\r\n";
-		sResponse += "</select>\r\n";
-		sResponse += "</td></tr>";
-		sResponse += "</table>\r\n";
-
-		sResponse += "<h3>Helligkeit</h3>\r\n";
-		sResponse += "<table>\r\n";
-		sResponse += "<tr><td width='100'>Tageszeit</td>\r\n";
-		sResponse += "<td><input onchange=\"window.location.href='?DAYSHIFT='+this.value;\" value='";
-		sResponse += getTimeString(DayTime);
-		sResponse += "' type ='time' />&nbsp; -&nbsp; ";
-		sResponse += "<input onchange=\"window.location.href='?NIGHTSHIFT='+this.value;\" value='";
-		sResponse += getTimeString(NightTime);
-		sResponse += "' type ='time'/>";
-		sResponse += "</td></tr>\r\n";
-		sResponse += "<tr><td width='100'>bei Tag</td>\r\n";
-		sResponse += "<td><button type='button' onclick=\"window.location.href='?DAY=MINUS'\"><</button><input onchange=\"window.location.href='?DAY='+this.value;\" value='";
-		sResponse += brightnessDay;
-		sResponse += "' min='0' max='255' type='range'>";
-		sResponse += "<button type='button' onclick=\"window.location.href='?DAY=PLUS'\">></button>&nbsp;&nbsp;";
-		sResponse += brightnessDay;
-		sResponse += "</td></tr>\r\n";
-		sResponse += "<tr><td width='100'>bei Nacht</td>\r\n";
-		sResponse += "<td><button type='button' onclick=\"window.location.href='?NIGHT=MINUS'\"><</button><input onchange=\"window.location.href='?NIGHT='+this.value;\" value='";
-		sResponse += brightnessNight;
-		sResponse += "' min='0' max='255' type='range'>";
-		sResponse += "<button type='button' onclick=\"window.location.href='?NIGHT=PLUS'\">></button>&nbsp;&nbsp;";
-		sResponse += brightnessNight;
-		sResponse += "</td></tr>\r\n</table>\r\n";
-
-		sResponse += "<h3>Farbe</h3>\r\n";
-		sResponse += "<table><tr><td width='100'>Rot</td>\r\n";
-		sResponse += "<td><button type='button' onclick=\"window.location.href='?RED=MINUS'\"><</button><input onchange=\"window.location.href='?RED='+this.value;\" value='";
-		sResponse += ledcolor.r;
-		sResponse += "' min='0' max='255' type='range'>";
-		sResponse += "<button type='button' onclick=\"window.location.href='?RED=PLUS'\">></button>&nbsp;&nbsp;";
-		sResponse += ledcolor.r;
-		sResponse += "</td></tr>\r\n";
-		sResponse += "<tr><td width='100'>Gr&uuml;n</td>\r\n";
-		sResponse += "<td><button type='button' onclick=\"window.location.href='?GREEN=MINUS'\"><</button><input onchange=\"window.location.href='?GREEN='+this.value;\" value='";
-		sResponse += ledcolor.g;
-		sResponse += "' min='0' max='255' type='range'>";
-		sResponse += "<button type='button' onclick=\"window.location.href='?GREEN=PLUS'\">></button>&nbsp;&nbsp;";
-		sResponse += ledcolor.g;
-		sResponse += "</td></tr>\r\n";
-		sResponse += "<tr><td width='100'>Blau</td>\r\n";
-		sResponse += "<td><button type='button' onclick=\"window.location.href='?BLUE=MINUS'\"><</button><input onchange=\"window.location.href='?BLUE='+this.value;\" value='";
-		sResponse += ledcolor.b;
-		sResponse += "' min='0' max='255' type='range'>";
-		sResponse += "<button type='button' onclick=\"window.location.href='?BLUE=PLUS'\">></button>&nbsp;&nbsp;";
-		sResponse += ledcolor.b;
-		sResponse += "</td></tr>";
-
-		sResponse += "<tr><td width='100'>Modus</td>\r\n<td>\r\n";
-		sResponse += "<select name=\"ColorMode\" onChange=\"window.location.href='?COLORMODE=' + this.options[this.selectedIndex].value\">\r\n";
-		sResponse += "<option value=\"SOLID\"";
-		sResponse += (clockDisp.getColorMode() == CClockDisplay::e_ModeSolid) ? " selected" : "";
-		sResponse += " >Solid</option>\r\n";
-		sResponse += "<option value=\"GRADIENT\"";
-		sResponse += (clockDisp.getColorMode() == CClockDisplay::e_ModeGradient) ? " selected" : "";
-		sResponse += " >Gradient</option>\r\n";
-		sResponse += "<option value=\"GLITTER\"";
-		sResponse += (clockDisp.getColorMode() == CClockDisplay::e_ModeGlitter) ? " selected" : "";
-		sResponse += " >Glitter</option>\r\n";
-		sResponse += "<option value=\"RAINBOW1\"";
-		sResponse += (clockDisp.getColorMode() == CClockDisplay::e_ModeRainbow_1) ? " selected" : "";
-		sResponse += " >Rainbow_1</option>\r\n";
-		sResponse += "<option value=\"RAINBOW2\"";
-		sResponse += (clockDisp.getColorMode() == CClockDisplay::e_ModeRainbow_2) ? " selected" : "";
-		sResponse += " >Rainbow_2</option>\r\n";
-		sResponse += "<option value=\"RAINBOW3\"";
-		sResponse += (clockDisp.getColorMode() == CClockDisplay::e_ModeRainbow_3) ? " selected" : "";
-		sResponse += " >Rainbow_3</option>\r\n";
-		sResponse += "</select>\r\n";
-
-		sResponse2 = "\r\n</td></tr>";
-		sResponse2 += "</table>\r\n<br/>\r\n";
-		sResponse2 += "<button type='button' onclick=\"window.location.href='?SAVE=true'\">Speichern</button>\r\n";
-
-		sResponse3 = "<br/><br/>\r\n";
-		sResponse3 += "<h3>Info</h3>\r\n";
-		sResponse3 += "<table><tr><td width='100'>Zeitserver</td>";
-		sResponse3 += "<td>";
-		sResponse3 += "&nbsp;<input id='ntpserver' onchange=\"window.location.href='?NTP='+this.value;\" value='";
-		sResponse3 += ntp_server;
-		sResponse3 += "' type ='text' />&nbsp;";
-		sResponse3 += "<button type='button' onclick=\"window.location.href='?SYNC=true'\">Sync</button>\r\n";
-		sResponse3 += "</td></tr>\r\n";
-		sResponse3 += "<tr><td width='100'>Sync</td>\r\n";
-		sResponse3 += "<td>";
-		time_t lastSync (CE.toLocal(Ntp.getLastSync()));
-		sResponse3 += hour(lastSync);
-		sResponse3 += ":";
-		sResponse3 += minute(lastSync);
-		sResponse3 += ".";
-		sResponse3 += second(lastSync);
-		sResponse3 += "</td></tr>\r\n";
-		sResponse3 += "<tr><td width='100'>Software</td>\r\n";
-		sResponse3 += "<td>";
-		sResponse3 += clock_version;
-		sResponse3 += "</td></tr>\r\n";
-			
-		sResponse3 += "<tr><td width='100'>LED</td>\r\n";
-		sResponse3 += "<td>";
-#ifdef STRIPE_APA102
-		sResponse3 += "APA102C";
-#endif
-#ifdef STRIPE_SK9822
-		sResponse3 += "SK9822";
-#endif
-		sResponse3 += "</td></tr>\r\n";
-		sResponse3 += "<tr><td width='100'>Sketch info:</td>\r\n";
-		sResponse3 += "<td>free ";
-		sResponse3 += ESP.getFreeSketchSpace();
-		sResponse3 += " (using ";
-		sResponse3 += ESP.getSketchSize();
-		sResponse3 += ")";
-		sResponse3 += "</td></tr></table>\r\n";
-
-		sResponse3 += "<button type = \"button\" onclick=\"window.location.href = '?DEMO=true'\">LED Demo</button><br/>\r\n";
-		sResponse3 += "<button type = \"button\" onclick=\"window.location.href = '?RESTART=true'\">Neustart</button><br/>\r\n";
-		sResponse3 += "</body></html>\r\n";
-
-		sHeader = "HTTP/1.1 200 OK\r\n";
-		sHeader += "Content-Length: ";
-		sHeader += ( sResponse.length() + sResponse2.length() + sResponse3.length() );
-		sHeader += "\r\n";
-		sHeader += "Content-Type: text/html\r\n";
-		sHeader += "Connection: close\r\n";
-		sHeader += "\r\n";
-	}
-
-	// Send the response to the client
-	client.print(sHeader);
-	client.print(sResponse);
-	client.print(sResponse2);
-	client.print(sResponse3);
-
-	// and stop the client
-	client.stop();
-	Serial.println("Client disonnected");
-
-	bRestarted = false;
+	MDNS.update();
 }

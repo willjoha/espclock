@@ -1,11 +1,6 @@
 #ifndef _CCLOCKDISPLAY_H
 #define _CCLOCKDISPLAY_H
 
-
-#define SMALLCLOCK
-//#define BIGCLOCK
-
-
 #include "IDisplay.h"
 #include <TimeLib.h>             
 #include <Timezone.h>             
@@ -30,7 +25,7 @@ public:
   enum eDialekt
   {
 	  e_Bayerisch,
-      e_Frankisch,
+    e_Frankisch,
 	  e_Hochdeutsch
   };
 
@@ -45,6 +40,8 @@ public:
   eColorMode getColorMode();
   void setDialekt(eDialekt myDialekt);
   eDialekt getDialekt();
+  bool isSmallClock(bool isSmallClock);
+  bool isSmallClock();
 
 
 private:
@@ -60,6 +57,7 @@ private:
   Timezone* m_pTZ;
   eColorMode m_ColorMode;
   eDialekt m_Dialekt;
+  bool m_smallclock;
 };
 
 #endif

@@ -58,23 +58,23 @@ const int ZWOELF[]  = { 49, 50, 51, 52, 53, -1 };
 const int ZEHN[]    = { 93, 94, 95, 96, -1 };
 const int UHR[]     = { 99, 100, 101, -1 };
 const int NEUN[]    = { 81, 82, 83, 84, -1 };
-#ifdef SMALLCLOCK
-const int MIN1[]    = { 112, -1 };
-const int MIN2[]    = { 112, 113, -1 };
-const int MIN3[]    = { 112, 113, 114, -1 };
-const int MIN4[]    = { 112, 113, 114, 115, -1 };
-#else
-const int MIN1[] = { 113, -1 };
-const int MIN2[] = { 113, 112, -1 };
-const int MIN3[] = { 113, 112, 111, -1 };
-const int MIN4[] = { 113, 112, 111, 110, -1 };
-#endif
+
+const int SMALL_MIN1[]    = { 112, -1 };
+const int SMALL_MIN2[]    = { 112, 113, -1 };
+const int SMALL_MIN3[]    = { 112, 113, 114, -1 };
+const int SMALL_MIN4[]    = { 112, 113, 114, 115, -1 };
+
+const int BIG_MIN1[] = { 113, -1 };
+const int BIG_MIN2[] = { 113, 112, -1 };
+const int BIG_MIN3[] = { 113, 112, 111, -1 };
+const int BIG_MIN4[] = { 113, 112, 111, 110, -1 };
+
 const int DST[]     = { 109, -1};
 
 
 
 
-CClockDisplay::CClockDisplay() : m_pLEDs(0), m_pLEDsFill(0), m_numLEDs(0), m_color(CRGB::Red), m_currentMinute(-1), m_pTZ(0), m_ColorMode(e_ModeSolid), m_Dialekt(e_Bayerisch)
+CClockDisplay::CClockDisplay() : m_pLEDs(0), m_pLEDsFill(0), m_numLEDs(0), m_color(CRGB::Red), m_currentMinute(-1), m_pTZ(0), m_ColorMode(e_ModeSolid), m_Dialekt(e_Bayerisch), m_smallclock(true)
 {
 
 }
@@ -186,6 +186,15 @@ CClockDisplay::eColorMode CClockDisplay::getColorMode()
 	return m_ColorMode;
 }
 
+bool CClockDisplay::isSmallClock(bool isSmallClock)
+{
+	m_smallclock = isSmallClock;
+	return m_smallclock;
+}
+bool CClockDisplay::isSmallClock()
+{
+	return m_smallclock;
+}
 
 /** 
  Sets the bits in resultArray depending on the values of the 
@@ -232,7 +241,7 @@ void CClockDisplay::display_hour(const int displayHour, const int minute, const 
 		hourAMPM -= 12;
 	}
 
-	Serial.print("display_hour: ");
+	Serial.print(", display_hour: ");
 	Serial.print("hour=");
 	Serial.print(hour);
 	Serial.print(", hourAMPM=");
@@ -409,16 +418,16 @@ void CClockDisplay::display_time(const int hour, const int minute)
 
 	switch (minutesRemaining)
 	{
-		case 1: compose(MIN1);
+		case 1: compose(m_smallclock ? SMALL_MIN1 : BIG_MIN1);
 				Serial.print(", case MIN1");
 				break;
-		case 2: compose(MIN2);
+		case 2: compose(m_smallclock ? SMALL_MIN2 : BIG_MIN2);
 				Serial.print(", case MIN2");
 				break;
-		case 3: compose(MIN3);
+		case 3: compose(m_smallclock ? SMALL_MIN3 : BIG_MIN3);
 				Serial.print(", case MIN3");
 				break;
-		case 4: compose(MIN4);
+		case 4: compose(m_smallclock ? SMALL_MIN4 : BIG_MIN4);
 				Serial.print(", case MIN4");
 				break;
 		default: break;
